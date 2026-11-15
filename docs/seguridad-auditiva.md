@@ -10,7 +10,7 @@
 | Inicio | Solo por clic del usuario (el `AudioContext` se crea en ese momento) |
 | Modulación | Profundidad 0–100 % y conmutador para desactivarla |
 | Cierre de pestaña | `pagehide` detiene todo y cierra el contexto |
-| Privacidad | El audio se procesa en el navegador. Las pistas de Bruma se cargan desde el mismo sitio. |
+| Privacidad | El audio se procesa en el navegador. Las pistas de Bruma se cargan desde el mismo sitio; la composición generativa se sintetiza localmente; los presets se guardan solo en este navegador (IndexedDB). Sin peticiones a terceros. |
 
 ## Limitación importante
 Un límite en dBFS **no** garantiza un nivel seguro en dB SPL: depende de los auriculares, altavoces,
@@ -24,3 +24,14 @@ o sensibilidad a estímulos rítmicos deben consultar a un profesional antes de 
 - La comparación A/B iguala la sonoridad (RMS) por defecto, sin subir el pico.
 - El indicador de clipping mide después del limitador: no detecta recortes previos ni picos
   entre muestras, y no dice nada del nivel acústico real (dB SPL).
+
+## Archivos exportados
+- El WAV exportado conserva el volumen elegido en la aplicación (pico ≤ −6 dBFS) y empieza y termina
+  con fundidos. La exportación verifica pico y clipping antes de descargar.
+- **Fuera de la aplicación no hay límites**: un reproductor externo puede subir el volumen o
+  repetir el archivo sin fin. Aplican las mismas precauciones: volumen del sistema bajo y parar
+  ante cualquier molestia.
+
+## Presets
+- Los presets importados pasan por la misma validación que la interfaz: un JSON manipulado no
+  puede superar el techo de volumen, la duración máxima ni los rangos de frecuencia.

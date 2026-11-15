@@ -1,16 +1,12 @@
-import { BrumaVoice } from '../audio/BrumaVoice.js';
 import { outputGain } from '../audio/dsp.js';
 import { PAUSE_FADE_SEC, SESSION_LOCKED_KEYS, STOP_FADE_SEC } from '../audio/limits.js';
 import { holdAt } from '../audio/params.js';
-import { SessionVoice } from '../audio/SessionVoice.js';
+import { createVoice as createSessionVoice } from '../audio/sources.js';
 import { sanitizeParams } from '../utils/validators.js';
 
 const START_DELAY_SEC = 0.05;
 const TICK_MS = 250;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const createSessionVoice = (ctx, params, signal) => params.source === 'bruma'
-  ? BrumaVoice.load(ctx, params, signal)
-  : new SessionVoice(ctx, params);
 
 /**
  * Controlador entre la UI y el motor. Garantiza:

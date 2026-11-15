@@ -2,7 +2,17 @@
 // La UI, los validadores, el motor y las pruebas leen de aquí.
 
 export const PARAM_SPEC = Object.freeze({
-  source: { kind: 'enum', values: ['tone-rain', 'bruma'], default: 'tone-rain', sessionLocked: true },
+  source: { kind: 'enum', values: ['tone-rain', 'bruma', 'generative'], default: 'tone-rain', sessionLocked: true },
+  // Composición generativa: la partitura sale de estos cuatro valores (ver src/music/composer.js).
+  genSeed: { kind: 'number', integer: true, min: 1, max: 999999, default: 7, sessionLocked: true },
+  genMode: { kind: 'enum', values: ['pentatonic', 'major', 'minor'], default: 'pentatonic', sessionLocked: true },
+  genRoot: {
+    kind: 'enum',
+    values: ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'],
+    default: 'D',
+    sessionLocked: true,
+  },
+  genTempo: { kind: 'number', integer: true, min: 50, max: 96, default: 68, sessionLocked: true },
   carrierHz: { kind: 'number', min: 100, max: 1000, default: 220 },
   waveform: { kind: 'enum', values: ['sine', 'triangle'], default: 'sine' },
   modRateHz: { kind: 'number', min: 1, max: 100, default: 40 },
@@ -12,7 +22,7 @@ export const PARAM_SPEC = Object.freeze({
   toneLevel: { kind: 'number', min: 0, max: 1, default: 1 },
   melodyLevel: { kind: 'number', min: 0, max: 1, default: 1 },
   chordsLevel: { kind: 'number', min: 0, max: 1, default: 1 },
-  brumaDepth: { kind: 'number', min: 0, max: 1, default: 0.2 },
+  chordsDepth: { kind: 'number', min: 0, max: 1, default: 0.2 },
   rainLevel: { kind: 'number', min: 0, max: 1, default: 0 },
   rainSeed: { kind: 'number', integer: true, min: 1, max: 999999, default: 4040, sessionLocked: true },
   volume: { kind: 'number', min: 0, max: 1, default: 0.2 },

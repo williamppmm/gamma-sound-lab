@@ -4,6 +4,11 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#0d1015" />
+    <meta name="description" content="Laboratorio local de síntesis, modulación de amplitud y análisis de audio. Experimental y educativo." />
+    <link rel="manifest" href="./manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="32x32" href="./icons/favicon-32.png" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
     <title>Gamma Sound Lab</title>
   </head>
   <body data-state="idle">
@@ -24,6 +29,7 @@
           <span>Fuente</span>
           <select id="source">
             <option value="bruma">Bruma de cristal</option>
+            <option value="generative">Composición generativa</option>
             <option value="tone-rain">Tono y lluvia</option>
           </select>
         </label>
@@ -40,6 +46,12 @@
 
       <p id="alert" class="alert" role="alert" hidden></p>
 
+      <p id="update-banner" class="notice" role="status" hidden>
+        Hay una versión nueva de la aplicación.
+        <button id="btn-update" type="button" class="btn btn--small">Actualizar ahora</button>
+        <small>(se aplica al recargar; hazlo cuando termines la sesión)</small>
+      </p>
+
       <section class="panel" aria-label="Análisis de la señal">
         <canvas id="scope" class="scope" aria-label="Forma de onda de la salida" aria-describedby="scope-caption"></canvas>
         <p id="scope-caption" class="scope__caption">Escala: borde = volumen 100 % (−6 dBFS)</p>
@@ -50,7 +62,26 @@
           <div><dt>Pico</dt><dd id="m-peak">—</dd></div>
           <div><dt>Clipping</dt><dd id="m-clip">—</dd></div>
         </dl>
-        <p id="bruma-note" class="scope__caption" hidden></p>
+        <p id="piece-note" class="scope__caption" hidden></p>
+      </section>
+
+      <section id="presets" class="panel presets" aria-label="Presets">
+        <div class="presets__row">
+          <label class="presets__select">
+            <span>Preset</span>
+            <select id="preset-select"></select>
+          </label>
+          <button id="btn-preset-load" type="button" class="btn btn--small">Cargar</button>
+          <button id="btn-preset-delete" type="button" class="btn btn--small">Eliminar</button>
+        </div>
+        <div class="presets__row">
+          <input id="preset-name" type="text" maxlength="60" placeholder="Nombre para guardar la configuración actual" aria-label="Nombre del preset" />
+          <button id="btn-preset-save" type="button" class="btn btn--small">Guardar</button>
+          <button id="btn-preset-export" type="button" class="btn btn--small">Exportar JSON</button>
+          <label id="preset-import-label" class="btn btn--small" for="preset-import">Importar JSON</label>
+          <input id="preset-import" type="file" accept="application/json,.json" class="visually-hidden" />
+        </div>
+        <p id="preset-status" class="scope__caption" role="status" aria-live="polite"></p>
       </section>
 
       <form id="controls" class="panel controls" autocomplete="off">
@@ -91,8 +122,49 @@
           </div>
         </fieldset>
 
-        <fieldset data-source="bruma">
-          <legend>Capas de Bruma de cristal</legend>
+        <fieldset data-source="generative" hidden>
+          <legend>Composición <small>(cada combinación genera una pieza distinta y reproducible)</small></legend>
+          <label class="field">
+            <span>Tónica</span>
+            <select name="genRoot" data-lock>
+              <option value="C">Do</option>
+              <option value="C#">Do♯</option>
+              <option value="D">Re</option>
+              <option value="D#">Re♯</option>
+              <option value="E">Mi</option>
+              <option value="F">Fa</option>
+              <option value="F#">Fa♯</option>
+              <option value="G">Sol</option>
+              <option value="G#">Sol♯</option>
+              <option value="A">La</option>
+              <option value="A#">La♯</option>
+              <option value="B">Si</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Modo</span>
+            <select name="genMode" data-lock>
+              <option value="pentatonic">Pentatónica</option>
+              <option value="major">Mayor</option>
+              <option value="minor">Menor</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>Tempo</span>
+            <input type="range" name="genTempo" step="1" data-lock />
+            <output data-for="genTempo"></output>
+          </label>
+          <div class="field">
+            <label for="genSeed">Semilla</label>
+            <div class="inline">
+              <input type="number" id="genSeed" name="genSeed" step="1" inputmode="numeric" data-lock />
+              <button type="button" id="btn-gen-seed" class="btn btn--small" data-lock>Nueva</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset data-source="bruma generative">
+          <legend>Capas de la pieza</legend>
           <label class="field">
             <span>Melodía</span>
             <input type="range" name="melodyLevel" step="1" data-scale="0.01" />
@@ -125,10 +197,10 @@
             <input type="range" name="depth" step="1" data-scale="0.01" />
             <output data-for="depth"></output>
           </label>
-          <label class="field" data-source="bruma">
+          <label class="field" data-source="bruma generative">
             <span>Profundidad</span>
-            <input type="range" name="brumaDepth" step="1" data-scale="0.01" />
-            <output data-for="brumaDepth"></output>
+            <input type="range" name="chordsDepth" step="1" data-scale="0.01" />
+            <output data-for="chordsDepth"></output>
           </label>
         </fieldset>
 
@@ -149,6 +221,29 @@
           </label>
         </fieldset>
       </form>
+
+      <section id="export" class="panel export" aria-label="Exportar audio">
+        <div class="presets__row">
+          <label class="presets__select">
+            <span>Exportar</span>
+            <select id="export-duration" aria-label="Duración de la exportación">
+              <option value="30">30 s</option>
+              <option value="60" selected>1 min</option>
+              <option value="120">2 min</option>
+              <option value="300">5 min</option>
+            </select>
+          </label>
+          <select id="export-format" aria-label="Formato">
+            <option value="16">WAV 16 bits</option>
+            <option value="32">WAV 32 bits float</option>
+          </select>
+          <button id="btn-export" type="button" class="btn btn--small">Exportar WAV</button>
+        </div>
+        <p id="export-status" class="scope__caption" role="status" aria-live="polite">
+          Renderiza la configuración actual, con fundidos, y verifica el resultado antes de descargarlo.
+        </p>
+        <ul id="export-report" class="export__report" hidden></ul>
+      </section>
 
       <footer class="app__footer">Procesamiento 100 % local. No se envía audio ni datos.</footer>
     </main>

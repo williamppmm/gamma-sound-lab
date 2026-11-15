@@ -8,46 +8,68 @@ asume que una modulación de 40 Hz produzca un beneficio neurológico.
 
 ```powershell
 npm install
-npm run dev      # http://localhost:5173
-npm test         # pruebas del motor DSP y validadores
-npm run build    # versión estática en dist/
+npm run dev        # http://localhost:5173
+npm test           # pruebas unitarias (Node)
+npm run test:e2e   # pruebas E2E en el Chrome instalado (build de producción)
+npm run build      # versión estática en dist/ (PWA instalable, funciona sin conexión)
 ```
 
-Requiere Node.js 22.12+ o 24+ (lo exige Vitest 5) y un navegador Chromium.
+Requiere Node.js 22.12+ o 24+ (lo exige Vitest 5) y Chrome o Edge. Las pruebas E2E usan el Chrome
+instalado en el sistema; no descargan navegadores.
 
 ## Fuentes de sonido
 
-- **Bruma de cristal** es la fuente inicial. Pulsa **Iniciar** para escuchar la pieza en bucle con
-  los acordes modulados a 40 Hz y una profundidad inicial del 20 %. Puedes ajustar por separado
-  el nivel de la melodía y los acordes, cambiar la frecuencia o comparar con la modulación apagada.
-- **Tono y lluvia** conserva el mezclador de tono y lluvia generada con semilla reproducible. Cambia
-  de fuente con la sesión detenida.
-- Portadora (100–1000 Hz, senoidal/triangular) con modulación de amplitud (1–100 Hz, por defecto 40 Hz)
-- Profundidad regulable y conmutador A/B (modulado / sin modular)
-- Volumen limitado (máx. −6 dBFS) + limitador de seguridad
-- Sesiones con duración obligatoria, fundidos, pausa/reanudación y parada automática
-- Osciloscopio, pico y clipping en ambas fuentes.
-- **Modulador (medido)**: una sonda interna reproduce la ganancia que el modulador aplica y se
-  mide en vivo; vale para cualquier fuente. **Modulación en la salida** solo se estima en Tono y
-  lluvia: en música los batidos entre notas producen lecturas falsas.
-- En Bruma, la interfaz indica que la melodía no se modula y qué parte de la energía de la mezcla
-  pasan por el modulador (≈ 75 % con niveles 100/100). La pieza es un bucle de 27,3 s.
-- La composición y la síntesis de Bruma de cristal se generaron con OpenAI Codex para Gamma Sound
-  Lab. Las dos pistas FLAC se ofrecen bajo [CC0 1.0](src/assets/LICENSE-ASSETS.md).
+- **Bruma de cristal**: pieza de dos capas en bucle (27,3 s). La modulación se aplica solo a los
+  acordes; la melodía suena sin modular. Composición y síntesis generadas con OpenAI Codex para
+  Gamma Sound Lab; las pistas se ofrecen bajo [CC0 1.0](src/assets/LICENSE-ASSETS.md).
+- **Composición generativa**: acordes y melodía originales sintetizados en el navegador a partir de
+  tónica, modo (pentatónica, mayor, menor), tempo y semilla. La misma combinación produce siempre
+  la misma pieza (16 compases, forma AABA, 40–77 s en bucle).
+- **Tono y lluvia**: portadora (100–1000 Hz, senoidal/triangular) y lluvia generada con semilla;
+  la modulación se aplica a toda la mezcla.
+
+## Modulación y medición
+
+- Modulación de amplitud de 1–100 Hz (40 Hz por defecto), profundidad regulable, comparación A/B
+  con la sonoridad igualada.
+- **Modulador (medido)**: una sonda interna reproduce la ganancia que se aplica y se mide en vivo;
+  vale para cualquier fuente. **Modulación en la salida** solo se estima con tono: en música los
+  batidos entre notas producen lecturas falsas, y la app lo indica en lugar de inventar cifras.
+- Osciloscopio, pico y clipping.
+
+## Sesiones, presets y exportación
+
+- Duración obligatoria, fundidos, pausa/reanudación y parada automática.
+- **Presets**: incluidos y propios, guardados en el navegador (IndexedDB), exportables e
+  importables como JSON con esquema versionado.
+- **Exportar WAV** (30 s – 5 min, 16 bits o 32 bits float): se renderiza con el mismo grafo que en
+  vivo y se verifica antes de descargar (duración, pico, clipping, modulación).
+
+## Seguridad
+
+Volumen inicial bajo, techo de −6 dBFS, limitador, fundidos, duración obligatoria, inicio solo por
+acción del usuario. Un límite en dBFS **no** garantiza un nivel seguro en tus auriculares: ver
+[docs/seguridad-auditiva.md](docs/seguridad-auditiva.md).
 
 ## Estructura
 
 ```
 src/
-  assets/     pistas estéreo FLAC de Bruma de cristal
-  audio/      motor (sin DOM): AudioEngine, SessionVoice, BrumaVoice, Mixer, Synthesizer, RainSource,
-              Modulator, Analyzer, generators.js (PRNG + lluvia),
-              dsp.js (funciones puras), limits.js (rangos y límites), params.js
-  sessions/   SessionManager: único punto que la UI usa para controlar el audio
-  ui/         Controls, Visualizer
-  utils/      validators
-tests/        Vitest (Node) sobre las funciones puras
-docs/         decisiones técnicas y seguridad auditiva
+  assets/     pistas FLAC de Bruma de cristal y su licencia
+  audio/      motor (sin DOM): AudioEngine, outputChain, sources, SessionVoice, PieceVoice, Mixer,
+              Synthesizer, RainSource, Modulator (con sonda), Analyzer, dsp.js, generators.js, limits.js
+  music/      compositor generativo, síntesis aditiva y su Web Worker
+  sessions/   SessionManager: único punto que la UI usa para reproducir
+  presets/    esquema versionado, migraciones, presets incluidos, gestor
+  storage/    IndexedDB
+  export/     render offline, verificación y codificación WAV
+  pwa/        service worker (generado en el build) y registro
+  ui/         Controls, Visualizer, PresetPanel, ExportPanel
+tests/        Vitest (Node) · tests/e2e: Playwright (Chrome)
+scripts/      generación de iconos
+docs/         arquitectura, roadmap, decisiones técnicas, seguridad auditiva, evaluación de Tauri
 ```
 
-Ver [docs/decisiones-tecnicas.md](docs/decisiones-tecnicas.md) y [docs/seguridad-auditiva.md](docs/seguridad-auditiva.md).
+Documentación: [arquitectura](docs/arquitectura.md) · [roadmap](docs/roadmap.md) ·
+[decisiones técnicas](docs/decisiones-tecnicas.md) · [seguridad auditiva](docs/seguridad-auditiva.md) ·
+[escritorio con Tauri](docs/escritorio-tauri.md)

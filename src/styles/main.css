@@ -32,7 +32,18 @@ body {
   margin: 0 auto;
   padding: 20px 16px 32px;
   display: grid;
+  /* minmax(0, 1fr): ningún hijo (p. ej. un select con opciones largas) puede ensanchar la columna */
+  grid-template-columns: minmax(0, 1fr);
   gap: 12px;
+}
+.app > *,
+.controls > *,
+fieldset {
+  min-width: 0;
+}
+select {
+  max-width: 100%;
+  text-overflow: ellipsis;
 }
 
 .app__header h1 {
@@ -78,6 +89,9 @@ body {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.transport__source select {
+  min-width: min(15rem, 100%);
 }
 .status {
   display: flex;
@@ -290,4 +304,68 @@ select:disabled {
   .buttons .btn {
     flex: 1;
   }
+}
+
+/* ---- Presets y exportación ---- */
+.presets,
+.export {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+.presets__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+.presets__select {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 0;
+}
+.presets__select select {
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+}
+.presets__row input[type='text'] {
+  flex: 1 1 220px;
+  min-width: 0;
+  background: var(--panel-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 5px 8px;
+  font: inherit;
+}
+label.btn {
+  display: inline-block;
+}
+label.btn[aria-disabled] {
+  opacity: 0.4;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+#preset-status[data-error='true'],
+#export-status[data-error='true'] {
+  color: var(--danger);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.export__report {
+  margin: 0;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+.export__report[data-ok='false'] {
+  color: var(--warn);
 }

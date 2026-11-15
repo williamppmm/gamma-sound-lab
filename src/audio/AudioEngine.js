@@ -1,23 +1,16 @@
-import { compressorMakeupDb } from './dsp.js';
-import { LIMITER, MAX_MASTER_GAIN } from './limits.js';
+import { MAX_MASTER_GAIN } from './limits.js';
+import { buildOutputChain } from './outputChain.js';
 import { smoothSet } from './params.js';
 
 /**
- * Dueño del AudioContext y de la cadena de salida:
- *
- *   fuentes → master (volumen) → fade (sesión) → limitador → trim → analizador → altavoces
- *
- * `trim` anula la ganancia de compensación automática del compresor, para que
- * el nivel de salida sea exactamente el programado (100 % = −6 dBFS).
- *
- * No sabe nada de botones ni de sesiones. El contexto se crea perezosamente
+ * Dueño del AudioContext y de la cadena de salida (ver outputChain.js, compartida con la
+ * exportación). No sabe nada de botones ni de sesiones. El contexto se crea perezosamente
  * (requiere un gesto del usuario) y se suspende cuando no hay sesión activa.
  */
 export class AudioEngine {
   #ctx = null;
   #master = null;
   #fade = null;
-  #limiter = null;
   #analyser = null;
 
   get context() {
@@ -42,17 +35,10 @@ export class AudioEngine {
 
   #build() {
     const ctx = new AudioContext({ latencyHint: 'playback' });
-    this.#master = new GainNode(ctx, { gain: 0 });
-    this.#fade = new GainNode(ctx, { gain: 0 });
-    this.#limiter = new DynamicsCompressorNode(ctx, LIMITER);
-    const trim = new GainNode(ctx, { gain: 10 ** (-compressorMakeupDb(LIMITER) / 20) });
-    this.#analyser = new AnalyserNode(ctx, { fftSize: 32768, smoothingTimeConstant: 0 });
-    this.#master
-      .connect(this.#fade)
-      .connect(this.#limiter)
-      .connect(trim)
-      .connect(this.#analyser)
-      .connect(ctx.destination);
+    const chain = buildOutputChain(ctx);
+    this.#master = chain.master;
+    this.#fade = chain.fade;
+    this.#analyser = chain.analyser;
     this.#ctx = ctx;
   }
 
@@ -76,7 +62,7 @@ export class AudioEngine {
 
   async close() {
     const ctx = this.#ctx;
-    this.#ctx = this.#master = this.#fade = this.#limiter = this.#analyser = null;
+    this.#ctx = this.#master = this.#fade = this.#analyser = null;
     if (ctx && ctx.state !== 'closed') await ctx.close();
   }
 }

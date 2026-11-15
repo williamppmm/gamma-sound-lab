@@ -6,6 +6,12 @@ import { MAX_MASTER_GAIN } from './audio/limits.js';
 import { SessionManager } from './sessions/SessionManager.js';
 import { Controls } from './ui/Controls.js';
 import { WaveformVisualizer } from './ui/Visualizer.js';
+import { PresetPanel } from './ui/PresetPanel.js';
+import { ExportPanel } from './ui/ExportPanel.js';
+import { renderExport, toWavBlob } from './export/AudioExporter.js';
+import { registerServiceWorker } from './pwa/register.js';
+import { PresetManager } from './presets/PresetManager.js';
+import { openDatabase, PresetStore } from './storage/Database.js';
 import { defaultParams } from './utils/validators.js';
 
 const $ = (sel) => document.querySelector(sel);
@@ -50,8 +56,48 @@ const btnStop = $('#btn-stop');
 btnStart.addEventListener('click', () => session.start());
 btnPause.addEventListener('click', () => (session.state === 'paused' ? session.resume() : session.pause()));
 btnStop.addEventListener('click', () => session.stop());
+// ---- Presets ------------------------------------------------------------------
+let presetPanel = null;
+async function initPresets() {
+  let store = null;
+  try {
+    store = new PresetStore(await openDatabase());
+  } catch (err) {
+    console.warn('Presets sin almacenamiento local:', err);
+  }
+  presetPanel = new PresetPanel($('#presets'), new PresetManager(store), {
+    getParams: () => session.params,
+    applyParams: (params) => controls.write(session.update(params)),
+  });
+  presetPanel.lock(session.state !== 'idle');
+}
+initPresets();
+
+// ---- PWA: uso sin conexión y aviso de actualización ------------------------------
+registerServiceWorker({
+  onUpdate: (apply) => {
+    const banner = $('#update-banner');
+    banner.hidden = false;
+    $('#btn-update').onclick = () => {
+      if (session.state !== 'idle' && !window.confirm('Hay una sesión en curso. ¿Actualizar igualmente?')) return;
+      apply();
+    };
+  },
+});
+
+// ---- Exportación WAV ------------------------------------------------------------
+new ExportPanel($('#export'), {
+  getParams: () => session.params,
+  render: renderExport,
+  toBlob: toWavBlob,
+});
+
+const randomSeed = () => 1 + Math.floor(Math.random() * 999999);
 $('#btn-seed').addEventListener('click', () => {
-  controls.write(session.update({ rainSeed: 1 + Math.floor(Math.random() * 999999) }));
+  controls.write(session.update({ rainSeed: randomSeed() }));
+});
+$('#btn-gen-seed').addEventListener('click', () => {
+  controls.write(session.update({ genSeed: randomSeed() }));
 });
 
 // ---- Lectura de mediciones ---------------------------------------------------
@@ -87,17 +133,20 @@ function showProbe(m) {
   }
 }
 
-/** Nota de Bruma: qué parte se modula y cuánto pesa en la mezcla. */
-function showBrumaNote(params) {
-  const note = $('#bruma-note');
+const isPiece = (source) => source === 'bruma' || source === 'generative';
+
+/** Nota de las piezas: qué parte se modula y cuánto pesa en la mezcla. */
+function showPieceNote(params) {
+  const note = $('#piece-note');
   const info = session.voiceInfo;
-  if (params.source !== 'bruma') {
+  if (!isPiece(params.source)) {
     note.hidden = true;
     return;
   }
   note.hidden = false;
   let text = 'La modulación se aplica solo a los acordes; la melodía suena sin modular.';
-  if (info) {
+  if (info?.chordsRms !== undefined) {
+    text = `${info.title}. ${text}`;
     const share = modulatedEnergyShare({
       modulatedLevel: params.chordsLevel,
       modulatedRms: info.chordsRms,
@@ -124,7 +173,7 @@ const MOD_STATUS_HINT = {
 
 function showMeasurement(m) {
   const p = session.params;
-  const isBruma = p.source === 'bruma';
+  const pieceSource = isPiece(p.source);
   if (!m || m.silent) {
     for (const el of Object.values(readout)) el.textContent = '—';
     readout.mod.dataset.status = '';
@@ -133,7 +182,7 @@ function showMeasurement(m) {
     readout.clip.dataset.alert = 'false';
     return;
   }
-  if (isBruma) {
+  if (pieceSource) {
     // La música tiene batidos propios entre notas: medir la salida daría lecturas falsas.
     readout.mod.dataset.status = 'none';
     readout.mod.textContent = 'no aplicable a música';
@@ -149,7 +198,7 @@ function showMeasurement(m) {
     readout.mod.title = `${MOD_STATUS_HINT[m.status] ?? ''} Ventana de análisis: ${m.windowSec.toFixed(2)} s.`.trim();
   }
   // La portadora se mide por cruces por cero en el modo de tono puro.
-  readout.carrier.textContent = !isBruma && p.toneLevel > 0 && p.rainLevel === 0
+  readout.carrier.textContent = !pieceSource && p.toneLevel > 0 && p.rainLevel === 0
     ? `${m.carrierHz.toFixed(1)} Hz`
     : 'n/d (mezcla)';
   readout.peak.textContent = `${toDbfs(m.peak).toFixed(1)} dBFS`;
@@ -161,7 +210,7 @@ let measureTimer = 0;
 function setMeasuring(on) {
   if (on && !measureTimer) {
     measureTimer = setInterval(() => {
-      const estimateTone = session.params.source !== 'bruma';
+      const estimateTone = session.params.source === 'tone-rain';
       showMeasurement(getAnalyzer()?.measure({ estimateTone }));
       showProbe(measureProbe());
     }, 1000);
@@ -188,16 +237,16 @@ function render({ state, remainingSec, reason, params }) {
   $('#remaining').textContent = fmtTime(remainingSec);
   if (params.source !== lastSource) {
     lastSource = params.source;
-    const isBruma = lastSource === 'bruma';
+    const pieceSource = isPiece(lastSource);
     sourceSelect.value = lastSource;
     controls.showSource(lastSource);
-    $('#mod-target').textContent = isBruma ? '(solo acordes)' : '(toda la mezcla)';
-    $('#m-probe-label').textContent = isBruma ? 'Modulador de acordes (medido)' : 'Modulador (medido)';
+    $('#mod-target').textContent = pieceSource ? '(solo acordes)' : '(toda la mezcla)';
+    $('#m-probe-label').textContent = pieceSource ? 'Modulador de acordes (medido)' : 'Modulador (medido)';
     showMeasurement(null);
   }
   if (params !== lastParams || state !== lastState) {
     lastParams = params;
-    showBrumaNote(params);
+    showPieceNote(params);
   }
   if (state === lastState && !reason) return;
   lastState = state;
@@ -210,6 +259,7 @@ function render({ state, remainingSec, reason, params }) {
   btnPause.textContent = state === 'paused' ? 'Reanudar' : 'Pausar';
   btnStop.disabled = state === 'idle' || state === 'stopping';
   controls.lock(state !== 'idle');
+  presetPanel?.lock(state !== 'idle');
 
   if (state === 'playing' || state === 'stopping') scope.start();
   else scope.stop();

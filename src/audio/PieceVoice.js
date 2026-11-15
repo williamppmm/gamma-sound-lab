@@ -1,18 +1,6 @@
 import { Mixer } from './Mixer.js';
 import { Modulator } from './Modulator.js';
 
-const melodyUrl = new URL('../assets/bruma-melodia.flac', import.meta.url);
-const chordsUrl = new URL('../assets/bruma-acordes.flac', import.meta.url);
-const buffersByContext = new WeakMap();
-
-async function decodeTrack(ctx, url, signal) {
-  const response = await fetch(url, { signal });
-  if (!response.ok) throw new Error('No se pudo cargar Bruma de cristal');
-  const encoded = await response.arrayBuffer();
-  signal.throwIfAborted();
-  return ctx.decodeAudioData(encoded);
-}
-
 const rmsCache = new WeakMap();
 
 /** RMS de todos los canales de un AudioBuffer (se calcula una vez por búfer). */
@@ -29,40 +17,24 @@ function bufferRms(buffer) {
 }
 
 const levelsOf = ({ melodyLevel, chordsLevel }) => ({ melody: melodyLevel, chords: chordsLevel });
-const modulationOf = (params) => ({ ...params, depth: params.brumaDepth });
+const modulationOf = (params) => ({ ...params, depth: params.chordsDepth });
 
-/** Reproduce las dos pistas estéreo de Bruma en fase, con AM solo en los acordes. */
-export class BrumaVoice {
-  static async load(ctx, params, signal) {
-    let buffers = buffersByContext.get(ctx);
-    if (!buffers) {
-      buffers = await Promise.all([
-        decodeTrack(ctx, melodyUrl, signal),
-        decodeTrack(ctx, chordsUrl, signal),
-      ]);
-      signal.throwIfAborted();
-      if (buffers[0].length !== buffers[1].length) {
-        throw new Error('Las pistas de Bruma de cristal tienen duraciones diferentes');
-      }
-      buffersByContext.set(ctx, buffers);
-    }
-    return new BrumaVoice(ctx, params, buffers);
-  }
-
-  /** AnalyserNode con la ganancia de modulación g(t) aplicada a los acordes (ver Modulator). */
-  get modulationProbe() {
-    return this.mod.probe;
-  }
-
-  /** Datos de las pistas para la interfaz: duración del bucle y RMS de cada pista. */
-  get info() {
-    return this.#info;
-  }
-
+/**
+ * Pieza de dos capas en bucle (Bruma de cristal o composición generativa): melodía sin
+ * modular y acordes con AM, ambas en fase.
+ *
+ *   melodía ─────────────────► canal melody ─┐
+ *                                            ├─► Mixer ─► salida
+ *   acordes ─► Modulator (AM) ─► canal chords ┘
+ */
+export class PieceVoice {
   #info;
 
-  constructor(ctx, params, [melody, chords]) {
+  /** @param tracks { melody: AudioBuffer, chords: AudioBuffer, title } */
+  constructor(ctx, params, { melody, chords, title }) {
+    if (melody.length !== chords.length) throw new Error('Las pistas de la pieza tienen duraciones diferentes');
     this.#info = Object.freeze({
+      title,
       loopSec: melody.duration,
       melodyRms: bufferRms(melody),
       chordsRms: bufferRms(chords),
@@ -74,6 +46,16 @@ export class BrumaVoice {
     this.melody.connect(this.mixer.input('melody'));
     this.chords.connect(this.mod.input);
     this.mod.output.connect(this.mixer.input('chords'));
+  }
+
+  /** AnalyserNode con la ganancia de modulación g(t) aplicada a los acordes (ver Modulator). */
+  get modulationProbe() {
+    return this.mod.probe;
+  }
+
+  /** Título, duración del bucle y RMS de cada pista, para la interfaz. */
+  get info() {
+    return this.#info;
   }
 
   connect(destination) {

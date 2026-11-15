@@ -8,8 +8,9 @@ const FORMAT = {
   toneLevel: (v) => `${Math.round(v * 100)} %`,
   melodyLevel: (v) => `${Math.round(v * 100)} %`,
   chordsLevel: (v) => `${Math.round(v * 100)} %`,
-  brumaDepth: (v) => `${Math.round(v * 100)} %`,
+  chordsDepth: (v) => `${Math.round(v * 100)} %`,
   rainLevel: (v) => `${Math.round(v * 100)} %`,
+  genTempo: (v) => `${Math.round(v)} ppm`,
   volume: (v) => (v === 0 ? '0 %' : `${Math.round(v * 100)} % · ${toDbfs(outputGain(v)).toFixed(0)} dBFS`),
 };
 
@@ -78,9 +79,10 @@ export class Controls {
     }
   }
 
+  /** Muestra solo los controles de la fuente activa. data-source admite varias separadas por espacios. */
   showSource(source) {
     for (const el of this.#form.querySelectorAll('[data-source]')) {
-      el.hidden = el.dataset.source !== source;
+      el.hidden = !el.dataset.source.split(/\s+/).includes(source);
     }
   }
 

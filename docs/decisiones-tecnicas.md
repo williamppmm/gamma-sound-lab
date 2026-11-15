@@ -6,9 +6,10 @@ usa `AudioEngine` y crea una voz por sesión según la fuente seleccionada.
 
 ```
 UI ──► SessionManager ──► AudioEngine ──► AudioContext
-           │                  master → fade → limitador → analizador → salida
-           └─► SessionVoice: (Synthesizer + RainSource) → Mixer → Modulator
+           │                  outputChain: master → fade → limitador → trim → analizador → salida
+           └─► sources.createVoice(): SessionVoice (tono + lluvia) | PieceVoice (Bruma, generativa)
 ```
+Diagrama completo y responsabilidades de cada módulo en [arquitectura.md](arquitectura.md).
 
 ## 2. Una sola fuente de verdad para límites
 `src/audio/limits.js` define rangos, valores por defecto, ganancia máxima y fundidos.
@@ -37,11 +38,11 @@ Desactivar la modulación (A/B) equivale a `d = 0`, con transición suave.
 - Pausar = fundido corto + `AudioContext.suspend()`: el reloj de audio se congela y el temporizador también.
 - Al terminar se destruye la voz y se suspende el contexto (no consume CPU en reposo).
 
-## 6. Pendiente / diferido
-- Más ambientes y melodías (resto de Fase 2), `PresetManager` + IndexedDB (Fase 4), `AudioExporter` (Fase 5).
+## 6. Diferido a propósito
 - `SafetyController` del plan original quedó repartido entre `limits.js`, `validators.js` y
   `SessionManager`; se extraerá a su propio módulo si crecen las reglas.
-- AudioWorklet solo cuando haga falta procesamiento por muestra.
+- AudioWorklet solo cuando haga falta procesamiento por muestra: las mediciones actuales no lo justifican.
+- Estado de todas las fases en [roadmap.md](roadmap.md).
 
 ## 7. Entorno
 El repositorio está en OneDrive. OneDrive no permite excluir solo `node_modules`; si la
@@ -146,3 +147,60 @@ Su salida es exactamente g(t); el mismo `estimateModulation` la mide con precisi
 `tests/probe.test.js`, que reproducen el caso con un acorde de dos notas que late a 27 Hz).
 La sonda verifica la automatización (LFO, profundidad, A/B), no la multiplicación del
 `GainNode`, que es trivial. En Tono y lluvia se muestran ambas: la sonda y la estimación de salida.
+
+## 12. Composición generativa (Fase 2)
+- `src/music/composer.js` es una función pura: `compose({ genSeed, genMode, genRoot, genTempo })`
+  devuelve siempre la misma partitura. Modos: pentatónica (armonía mayor), mayor y menor natural.
+- Forma AABA de 16 compases con dos progresiones de 4 acordes elegidas por la semilla; un acorde por
+  compás (bajo + tríada en registro medio, colocadas dentro de un rango para que la conducción de voces
+  sea suave). Melodía monofónica: tiempos fuertes en notas del acorde, paso a paso entre ellos
+  (saltos ≤ octava), cadencias cada 4 compases y final en la tónica para que el bucle resuelva.
+- `src/music/synth.js` sintetiza la partitura con síntesis aditiva: "teclas" (decaimiento exponencial,
+  armónicos que se apagan antes) y "pad" (ataque lento). Fasor giratorio en lugar de `sin()` por muestra.
+  Las colas que pasan del final se suman al principio: el bucle no tiene costura.
+- Tarda ~1 s a 48 kHz, por eso corre en un **Web Worker** (`pieceWorker.js`), cancelable con Detener.
+- Las dos pistas usan la misma `PieceVoice` que Bruma: melodía sin modular, acordes con AM y sonda.
+- Pruebas (`tests/music.test.js`): determinismo, notas dentro de la escala en las 12 tónicas y 3 modos,
+  forma, rango, saltos, final en la tónica, costura del bucle y tiempo de síntesis.
+
+## 13. Presets (Fase 4)
+- Esquema versionado en `src/presets/schema.js`: `{ version, id, name, createdAt, updatedAt, params }`.
+  Los parámetros pasan siempre por `sanitizeParams` (faltantes → por defecto, desconocidos → fuera).
+- Migraciones explícitas (`MIGRATIONS[n]` lleva de la versión n a la n + 1). La versión 0 cubre
+  parámetros sueltos de antes del esquema, incluido el antiguo `brumaDepth` → `chordsDepth`.
+- Versiones futuras se rechazan con un mensaje claro ("actualiza la aplicación").
+- IndexedDB (`src/storage/Database.js`) sin dependencias; si no está disponible (modo privado
+  estricto), la app sigue funcionando con los presets incluidos.
+- Importar nunca sobrescribe por id: cada preset importado recibe uno nuevo. Los inválidos se
+  informan uno a uno sin detener la importación. Límite de 1 MB y 500 presets por archivo.
+- Pruebas con IndexedDB real en memoria (`fake-indexeddb`).
+
+## 14. Exportación WAV (Fase 5)
+- `OfflineAudioContext` con **el mismo grafo** que en vivo: `sources.createVoice()` y
+  `buildOutputChain()` son compartidos con la sesión. Fundidos de entrada/salida en el archivo.
+- Verificación automática (`verifyExport`, pura): duración exacta, pico ≤ −6 dBFS, sin clipping,
+  sonda del modulador (frecuencia ±0,2 Hz, profundidad ±2 puntos) leída con `suspend()` a mitad del
+  render, y en tono puro también la modulación del audio exportado. Si falla, no se descarga sin
+  confirmar.
+- WAV propio (`src/export/wav.js`): 16 bits con dither TPDF determinista, o 32 bits float con
+  bloque `fact`. Ida y vuelta probada.
+- E2E en Chrome (`tests/e2e/app.spec.js`): exporta las tres fuentes por la interfaz, decodifica el
+  WAV descargado en Node y comprueba longitud, pico, clipping, fundidos y modulación.
+
+## 15. PWA y sin conexión (Fase 6)
+- Service worker generado en el build (plugin en `vite.config.js`) con la lista exacta de recursos
+  (incluidos el worker de síntesis y los FLAC) y versión de caché derivada de sus nombres con hash.
+- Navegación: red primero con copia en caché; recursos: caché primero. `ignoreVary` es necesario:
+  los módulos se piden con cabecera `Origin` y el servidor responde `Vary: Origin` (detectado por la
+  prueba E2E sin conexión, que fallaba sin esto).
+- Una versión nueva **no se activa sola** (podría cortar una sesión o dejar a una pestaña sin sus
+  recursos): la página muestra "Actualizar ahora" y solo entonces recarga.
+- `base: './'` en Vite: el build funciona en cualquier subcarpeta y dentro de un empaquetado de escritorio.
+- Iconos generados por `scripts/make-icons.mjs` (PNG con zlib, sin dependencias), incluido el maskable.
+- Escritorio: evaluación de Tauri en [escritorio-tauri.md](escritorio-tauri.md).
+
+## 16. Pruebas
+- `npm test`: Vitest en Node (DSP, música, presets, exportación, sesiones con dobles, PWA).
+- `npm run test:e2e`: Playwright con el Chrome instalado (sin descargar navegadores), sobre el build
+  de producción: reproducción en vivo con la sonda, exportación de las tres fuentes, presets
+  persistentes y funcionamiento sin conexión.

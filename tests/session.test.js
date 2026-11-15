@@ -72,7 +72,7 @@ describe('inicio', () => {
     session = new SessionManager(engine, { ...PARAMS, source: 'bruma' }, { createVoice });
 
     const start = session.start();
-    expect(await loading.promise).toMatchObject({ source: 'bruma', modRateHz: 40, brumaDepth: 0.2 });
+    expect(await loading.promise).toMatchObject({ source: 'bruma', modRateHz: 40, chordsDepth: 0.2 });
     expect(session.state).toBe('starting');
     expect(session.remainingSec).toBe(60);
     expect(session.update({ source: 'tone-rain', chordsLevel: 0.4 }).source).toBe('bruma');
