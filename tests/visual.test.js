@@ -1,6 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { mulberry32 } from '../src/audio/generators.js';
-import { AMBIENT, colorForLuminance, createAmbientState, musicFeatures, stepAmbient } from '../src/visual/ambient.js';
+import {
+  AMBIENT,
+  ambientMaxLuminance,
+  colorForLuminance,
+  createAmbientState,
+  DEFAULT_AMBIENT_OPTIONS,
+  FIXED_HUE,
+  musicFeatures,
+  sanitizeAmbientOptions,
+  stepAmbient,
+} from '../src/visual/ambient.js';
 import {
   createFrameGuard,
   estimateRefreshRate,
@@ -9,6 +19,7 @@ import {
   lampLuminance,
   lampLuminanceAtOpacity,
   LIGHT,
+  lightStopReason,
   luminanceSwing,
   maxFlashesPerSecond,
   opacityForLuminance,
@@ -68,6 +79,59 @@ describe('nivel 1: visual ambiental sin destellos', () => {
     const quiet = run(() => ({ energy: 0.1, brightness: 0 })).at(-1);
     const loud = run(() => ({ energy: 0.9, brightness: 0 })).at(-1);
     expect(loud).toBeGreaterThan(quiet + 0.05);
+  });
+
+  describe('opciones de color y brillo', () => {
+    const adversarial = (_t, i) => ({ energy: i % 2, brightness: i % 2 });
+    function runWith(options, featureAt = adversarial, seconds = 8) {
+      let s = createAmbientState();
+      const lum = [];
+      const hue = [];
+      for (let i = 0; i < FPS * seconds; i++) {
+        s = stepAmbient(s, featureAt(i / FPS, i), 1 / FPS, options);
+        lum.push(s.luminance);
+        hue.push(s.hue);
+      }
+      return { lum, hue };
+    }
+
+    it.each([
+      ['reactive', 'soft'],
+      ['reactive', 'dim'],
+      ['fixed', 'soft'],
+      ['fixed', 'dim'],
+    ])('color %s, brillo %s: sin destellos y dentro de su límite', (color, brightness) => {
+      const { lum } = runWith({ color, brightness });
+      expect(maxFlashesPerSecond(lum, FPS)).toBe(0);
+      expect(Math.max(...lum)).toBeLessThanOrEqual(ambientMaxLuminance(brightness) + 1e-12);
+    });
+
+    it('tenue llega como mucho a la mitad del brillo suave', () => {
+      const loud = () => ({ energy: 1, brightness: 0.5 });
+      const soft = runWith({ color: 'reactive', brightness: 'soft' }, loud).lum.at(-1);
+      const dim = runWith({ color: 'reactive', brightness: 'dim' }, loud).lum.at(-1);
+      expect(dim).toBeLessThanOrEqual(ambientMaxLuminance('soft') / 2 + 1e-12);
+      expect(soft).toBeGreaterThan(dim * 1.9);
+      expect(dim).toBeGreaterThan(AMBIENT.minLuminance);
+    });
+
+    it('color fijo: el tono no sigue al timbre; reactivo: sí', () => {
+      const bright = () => ({ energy: 0.5, brightness: 1 });
+      const dark = () => ({ energy: 0.5, brightness: 0 });
+      const fixedA = runWith({ color: 'fixed', brightness: 'soft' }, bright, 20).hue.at(-1);
+      const fixedB = runWith({ color: 'fixed', brightness: 'soft' }, dark, 20).hue.at(-1);
+      expect(fixedA).toBeCloseTo(FIXED_HUE, 1);
+      expect(fixedB).toBeCloseTo(FIXED_HUE, 1);
+      const reactA = runWith({ color: 'reactive', brightness: 'soft' }, bright, 20).hue.at(-1);
+      const reactB = runWith({ color: 'reactive', brightness: 'soft' }, dark, 20).hue.at(-1);
+      expect(reactA - reactB).toBeGreaterThan(50);
+    });
+
+    it('opciones desconocidas (p. ej. de localStorage manipulado) vuelven a las de por defecto', () => {
+      expect(sanitizeAmbientOptions({ color: 'strobe', brightness: 'max' })).toEqual(DEFAULT_AMBIENT_OPTIONS);
+      expect(sanitizeAmbientOptions(null)).toEqual(DEFAULT_AMBIENT_OPTIONS);
+      expect(sanitizeAmbientOptions({ color: 'fixed', brightness: 'dim' })).toEqual({ color: 'fixed', brightness: 'dim' });
+    });
   });
 
   it('colorForLuminance produce exactamente la luminancia pedida en cualquier tono', () => {
@@ -156,6 +220,33 @@ describe('nivel 2: luz modulada', () => {
       expect(r.hz).toBeCloseTo(120, 0);
       expect(r.jitterMs).toBeLessThan(0.1);
       expect(estimateRefreshRate([16, 17]).hz).toBe(0);
+    });
+  });
+
+  describe('lightStopReason: cualquier cambio de las condiciones comprobadas apaga la luz', () => {
+    const start = { rateHz: 40, viewport: { width: 1920, height: 1080 } };
+    const ok = { state: 'playing', modulationOn: true, rateHz: 40, reducedMotion: false, viewport: { width: 1920, height: 1080 }, hidden: false };
+
+    it('sin cambios, sigue encendida', () => {
+      expect(lightStopReason(start, ok)).toBeNull();
+    });
+
+    it.each([
+      ['reducir movimiento activado durante el parpadeo', { reducedMotion: true }, /reducir el movimiento/],
+      ['ventana más pequeña (la lámpara superaría el 10 %)', { viewport: { width: 800, height: 600 } }, /tamaño de la ventana/],
+      ['ventana más grande o salir de pantalla completa', { viewport: { width: 1920, height: 1040 } }, /tamaño de la ventana/],
+      ['cambio de frecuencia, aunque siga en rango', { rateHz: 41 }, /cambió la frecuencia/],
+      ['pausa o fin de la sesión', { state: 'paused' }, /no está sonando/],
+      ['modulación desactivada (A/B)', { modulationOn: false }, /modulación se desactivó/],
+      ['pestaña oculta', { hidden: true }, /visible/],
+    ])('%s', (_name, change, message) => {
+      expect(lightStopReason(start, { ...ok, ...change })).toMatch(message);
+    });
+
+    it('si la ventana se reduce, la lámpara calculada al inicio superaría el límite de área', () => {
+      const d = lampDiameter(start.viewport);
+      const small = { width: 800, height: 600 };
+      expect((Math.PI * (d / 2) ** 2) / (small.width * small.height)).toBeGreaterThan(LIGHT.maxAreaFraction);
     });
   });
 

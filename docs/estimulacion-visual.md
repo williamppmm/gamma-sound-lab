@@ -21,6 +21,18 @@ su brillo espectral (centroide).
 - Luminancia máxima 0,18 (relativa). El color se calcula para dar exactamente la luminancia
   controlada (`colorForLuminance`), desaturando si hace falta.
 - Con "reducir movimiento" del sistema, el campo deja de desplazarse.
+- **Opciones** (se recuerdan en este navegador): color *reactivo* (el tono sigue el timbre) o
+  *fijo* (solo cambia el brillo), y brillo *suave* (hasta 0,18) o *tenue* (hasta 0,09). Sirven para
+  separar qué agrada: el color, su movimiento o la combinación. Todas las combinaciones están
+  probadas sin destellos.
+
+### Comparar condiciones (prueba de preferencias informal)
+
+Para decidir qué mostrar por defecto: el mismo fragmento de Bruma, con el mismo volumen y la misma
+modulación de audio, en tres condiciones — solo música, color fijo y color reactivo —, alternando
+el orden entre personas y preguntando por agrado, comodidad visual y cuál volverían a usar. Es una
+orientación de diseño, no un estudio: pocas personas, sin conclusiones generales. Explicar antes
+qué verán y oirán y que pueden parar cuando quieran. **Sin la luz modulada.**
 
 ## Nivel 2 · Luz modulada (experimental, desactivada por defecto)
 
@@ -44,7 +56,8 @@ migraña o malestar. Las pautas WCAG desaconsejan más de 3 destellos por segund
 | Pantalla | ≥ 3 fotogramas por ciclo (≥ 120 Hz para 40 Hz) y fotogramas estables (dispersión ≤ 1 ms) | A 60 Hz, 40 Hz se dibujaría con componentes cerca de 20 Hz |
 | Vigilancia | Se detiene si > 2 % de los fotogramas se pierden | Un fotograma perdido alarga el ciclo y crea parpadeo lento |
 | Consentimiento | Diálogo con advertencias y dos casillas obligatorias en **cada** activación | No se recuerda |
-| Parada | Cualquier tecla, clic o toque; cambiar de pestaña o ventana; pausa, fin o Detener; A/B; frecuencia fuera de rango | Detener debe ser inmediato y sin buscar un botón |
+| Parada | Cualquier tecla, clic o toque; cambiar de pestaña o ventana; pausa, fin o Detener; A/B | Detener debe ser inmediato y sin buscar un botón |
+| Cambio de condiciones | Se apaga si cambia la frecuencia (aunque siga en rango), el tamaño de la ventana (incluida la pantalla completa) o la preferencia "reducir movimiento" | Lo comprobado al activarla deja de valer: el área podría superar el 10 % o la pantalla dejar de ser compatible. Reactivarla repite consentimiento y medición |
 | Duración | 10 minutos por activación | Exposición acotada |
 | Sistema | Bloqueada con "reducir movimiento" | Respeta la preferencia de accesibilidad |
 
@@ -62,6 +75,10 @@ El LFO del modulador arranca con fase 0 en un instante conocido del reloj de aud
 oyendo (`AudioContext.getOutputTimestamp`) y se integra la fase con la frecuencia actual, así que
 la luz sigue los cambios de frecuencia y se congela en pausa. La sincronía es aproximada (unos
 milisegundos): depende de la latencia de la pantalla, que el navegador no informa.
+
+Para medir la sincronía real en un equipo concreto: un fotodiodo frente a la lámpara y la salida
+de audio capturados en el mismo reloj (p. ej. dos canales de una interfaz de audio), sin exponer a
+personas. Permite conocer el desfase y su variación. No se ha hecho todavía.
 
 ### Probarla
 

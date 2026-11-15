@@ -255,6 +255,20 @@
           <span class="immersive__title">Vista inmersiva</span>
           <span id="immersive-session" class="immersive__session"></span>
           <label class="immersive__depth">
+            <span>Color</span>
+            <select id="ambient-color">
+              <option value="reactive">Reactivo (sigue el timbre)</option>
+              <option value="fixed">Fijo</option>
+            </select>
+          </label>
+          <label class="immersive__depth">
+            <span>Brillo</span>
+            <select id="ambient-brightness">
+              <option value="soft">Suave</option>
+              <option value="dim">Tenue</option>
+            </select>
+          </label>
+          <label class="immersive__depth">
             <span>Profundidad de la luz</span>
             <input type="range" id="light-depth" step="1" />
             <output id="light-depth-out"></output>

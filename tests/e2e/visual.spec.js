@@ -26,6 +26,34 @@ test('la vista ambiental se ilumina con la música y se cierra con Escape', asyn
   await expect(view).toBeHidden();
 });
 
+test('opciones del campo: "tenue" oscurece, "fijo" se aplica y ambas se recuerdan', async ({ page }) => {
+  const meanLuma = () =>
+    page.evaluate(() => {
+      const c = document.querySelector('.immersive__ambient');
+      const data = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+      let sum = 0;
+      let n = 0;
+      for (let i = 0; i < data.length; i += 4 * 97) {
+        sum += 0.2126 * data[i] + 0.7152 * data[i + 1] + 0.0722 * data[i + 2];
+        n++;
+      }
+      return sum / n;
+    });
+  await startSession(page, 'tone-rain'); // tono continuo: energía estable
+  await page.click('#btn-immersive');
+  await page.waitForTimeout(4000);
+  const soft = await meanLuma();
+  await page.selectOption('#ambient-brightness', 'dim');
+  await page.selectOption('#ambient-color', 'fixed');
+  await page.waitForTimeout(5000);
+  const dim = await meanLuma();
+  expect(dim).toBeLessThan(soft * 0.85);
+
+  await page.reload();
+  await expect(page.locator('#ambient-brightness')).toHaveValue('dim');
+  await expect(page.locator('#ambient-color')).toHaveValue('fixed');
+});
+
 test('la luz exige sesión activa, consentimiento explícito y pantalla compatible', async ({ page }) => {
   await page.goto('/');
   await page.click('#btn-immersive');

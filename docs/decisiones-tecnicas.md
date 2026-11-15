@@ -218,3 +218,9 @@ La sonda verifica la automatización (LFO, profundidad, A/B), no la multiplicaci
   consentimiento en cada activación, parada con cualquier interacción, 10 min máximo.
 - No forma parte de `PARAM_SPEC`: no se guarda en presets ni se puede activar desde un JSON.
 - Un analizador pequeño (2048) en la cadena de salida alimenta los visuales sin cargar el grande.
+- Revisión posterior: la luz no se apagaba si durante el parpadeo se activaba "reducir movimiento"
+  o se redimensionaba la ventana (con una ventana más pequeña la lámpara podía superar el 10 % del
+  área). Ahora `lightStopReason` (pura, probada) apaga la luz ante cualquier cambio de las
+  condiciones comprobadas al activarla, incluido un cambio de frecuencia dentro del rango.
+- El campo ambiental admite color fijo o reactivo y brillo suave o tenue (en `localStorage`,
+  validado al leerlo); todas las combinaciones probadas sin destellos.

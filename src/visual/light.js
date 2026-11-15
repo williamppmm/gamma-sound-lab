@@ -124,6 +124,28 @@ export function flickerCompatibility({ refreshHz, jitterMs, rateHz, reducedMotio
 }
 
 /**
+ * ¿Hay que apagar la luz activa? Se evalúa ante cualquier cambio (sesión, parámetros, ventana,
+ * preferencias). Criterio conservador: cualquier cambio de las condiciones con las que se
+ * comprobó la seguridad la apaga; volver a activarla repite consentimiento y medición.
+ * @param start  condiciones al activarla { rateHz, viewport: { width, height } }
+ * @param now    condiciones actuales { state, modulationOn, rateHz, reducedMotion, viewport, hidden }
+ * @returns motivo (texto) o null si puede seguir
+ */
+export function lightStopReason(start, now) {
+  if (now.reducedMotion) return 'Luz detenida: el sistema pide reducir el movimiento.';
+  if (now.hidden) return 'Luz detenida: la ventana dejó de estar visible.';
+  if (now.state !== 'playing') return 'Luz detenida: la sesión no está sonando.';
+  if (!now.modulationOn) return 'Luz detenida: la modulación se desactivó (A/B).';
+  if (now.rateHz !== start.rateHz) {
+    return 'Luz detenida: cambió la frecuencia. Vuelve a activarla para comprobar de nuevo la pantalla.';
+  }
+  if (now.viewport.width !== start.viewport.width || now.viewport.height !== start.viewport.height) {
+    return 'Luz detenida: cambió el tamaño de la ventana (la lámpara debe ocupar ≤ 10 % de la pantalla).';
+  }
+  return null;
+}
+
+/**
  * Vigila los fotogramas durante el parpadeo. Un fotograma perdido alarga el ciclo y crea
  * componentes de baja frecuencia: si pasa con frecuencia, hay que detener la luz.
  * @returns push(intervalMs) → 'ok' | 'irregular'

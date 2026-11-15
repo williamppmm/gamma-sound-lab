@@ -3,6 +3,7 @@ import {
   createAmbientState,
   musicFeatures,
   nextReference,
+  sanitizeAmbientOptions,
   stepAmbient,
 } from '../visual/ambient.js';
 import {
@@ -13,6 +14,7 @@ import {
   lampDiameter,
   lampLuminance,
   LIGHT,
+  lightStopReason,
   luminanceSwing,
   opacityForLuminance,
 } from '../visual/light.js';
@@ -40,6 +42,7 @@ export class ImmersiveView {
   #reference = 1e-3;
   #time = 0;
   #buffers = null;
+  #ambientOptions = loadAmbientOptions();
   // Luz modulada
   #light = null; // { phase, lastCtxTime, guard, expectedMs, timer }
   #measuring = null; // { intervals, resolve }
@@ -57,6 +60,8 @@ export class ImmersiveView {
       sessionInfo: $('#immersive-session'),
       depth: $('#light-depth'),
       depthOut: $('#light-depth-out'),
+      ambientColor: $('#ambient-color'),
+      ambientBrightness: $('#ambient-brightness'),
       lightBtn: $('#btn-light'),
       closeBtn: $('#btn-immersive-close'),
       status: $('#light-status'),
@@ -73,6 +78,17 @@ export class ImmersiveView {
     };
     e.depth.addEventListener('input', showDepth);
     showDepth();
+    e.ambientColor.value = this.#ambientOptions.color;
+    e.ambientBrightness.value = this.#ambientOptions.brightness;
+    const onAmbient = () => {
+      this.#ambientOptions = sanitizeAmbientOptions({
+        color: e.ambientColor.value,
+        brightness: e.ambientBrightness.value,
+      });
+      saveAmbientOptions(this.#ambientOptions);
+    };
+    e.ambientColor.addEventListener('change', onAmbient);
+    e.ambientBrightness.addEventListener('change', onAmbient);
     e.lightBtn.addEventListener('click', () => (this.#light ? this.#stopLight('Luz detenida.') : this.#requestLight()));
     e.closeBtn.addEventListener('click', () => this.close());
     root.addEventListener('keydown', (ev) => {
@@ -159,7 +175,7 @@ export class ImmersiveView {
       canvas.width = w;
       canvas.height = h;
     }
-    this.#ambient = stepAmbient(this.#ambient, this.#readFeatures(dt), dt);
+    this.#ambient = stepAmbient(this.#ambient, this.#readFeatures(dt), dt, this.#ambientOptions);
     const { luminance, hue } = this.#ambient;
     const c = this.#ctx2d;
     // Movimiento muy lento del centro (no cambia el brillo); desactivado con "reducir movimiento".
@@ -233,6 +249,7 @@ export class ImmersiveView {
     const t = audibleTime(clock.context, performance.now());
     const rate = this.#session.params.modRateHz;
     this.#light = {
+      start: { rateHz: rate, viewport: viewportSize() }, // condiciones con las que se comprobó
       depth: clampDepth(Number(this.#el.depth.value) / 100),
       phase: (rate * (t - clock.startTime)) % 1,
       lastCtxTime: t,
@@ -258,20 +275,48 @@ export class ImmersiveView {
     // Cualquier interacción la detiene. Se registra en el siguiente ciclo para no capturar
     // el propio clic que la activó.
     const stop = () => this.#stopLight('Luz detenida.');
-    const onVisibility = () => document.hidden && stop();
+    const check = () => this.#checkLight();
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    // Cambios de condiciones: se registran ya (no dependen del clic que la activó).
+    window.addEventListener('resize', check);
+    document.addEventListener('fullscreenchange', check);
+    document.addEventListener('visibilitychange', check);
+    motion.addEventListener('change', check);
+    window.addEventListener('blur', stop, { once: true });
+    let interactionListeners = false;
+    this.#stopListeners = () => {
+      window.removeEventListener('resize', check);
+      document.removeEventListener('fullscreenchange', check);
+      document.removeEventListener('visibilitychange', check);
+      motion.removeEventListener('change', check);
+      window.removeEventListener('blur', stop);
+      if (interactionListeners) {
+        window.removeEventListener('keydown', stop, { capture: true });
+        window.removeEventListener('pointerdown', stop, { capture: true });
+      }
+    };
+    // Teclas y toques: en el siguiente ciclo, para no capturar el propio clic que la activó.
     setTimeout(() => {
       if (!this.#light) return;
       window.addEventListener('keydown', stop, { capture: true, once: true });
       window.addEventListener('pointerdown', stop, { capture: true, once: true });
-      window.addEventListener('blur', stop, { once: true });
-      document.addEventListener('visibilitychange', onVisibility);
-      this.#stopListeners = () => {
-        window.removeEventListener('keydown', stop, { capture: true });
-        window.removeEventListener('pointerdown', stop, { capture: true });
-        window.removeEventListener('blur', stop);
-        document.removeEventListener('visibilitychange', onVisibility);
-      };
+      interactionListeners = true;
     }, 0);
+  }
+
+  /** Apaga la luz si cualquier condición comprobada al activarla ha cambiado. */
+  #checkLight() {
+    if (!this.#light) return;
+    const p = this.#session.params;
+    const reason = lightStopReason(this.#light.start, {
+      state: this.#session.state,
+      modulationOn: p.modulationOn,
+      rateHz: p.modRateHz,
+      reducedMotion: matchMedia('(prefers-reduced-motion: reduce)').matches,
+      viewport: viewportSize(),
+      hidden: document.hidden,
+    });
+    if (reason) this.#stopLight(reason);
   }
 
   #drawLamp(ts) {
@@ -313,21 +358,31 @@ export class ImmersiveView {
       const label = { idle: 'Detenido', starting: 'Preparando…', playing: 'Reproduciendo', paused: 'En pausa', stopping: 'Finalizando…' }[state];
       this.#el.sessionInfo.textContent = `${label} · ${time}`;
     }
-    if (!this.#light) return;
-    if (state !== 'playing') return this.#stopLight('Luz detenida: la sesión no está sonando.');
-    if (!params.modulationOn) return this.#stopLight('Luz detenida: la modulación se desactivó (A/B).');
-    if (params.modRateHz < LIGHT.minRateHz || params.modRateHz > LIGHT.maxRateHz) {
-      return this.#stopLight(`Luz detenida: ${params.modRateHz} Hz está fuera del rango permitido.`);
-    }
-    const refreshHz = 1000 / this.#light.expectedMs;
-    if (refreshHz / params.modRateHz < LIGHT.minFramesPerCycle) {
-      return this.#stopLight('Luz detenida: la nueva frecuencia no es compatible con esta pantalla.');
-    }
+    this.#checkLight();
   }
 
   #say(message, isError = false) {
     this.#el.status.textContent = message;
     this.#el.status.dataset.error = String(isError);
+  }
+}
+
+const viewportSize = () => ({ width: window.innerWidth, height: window.innerHeight });
+
+// Preferencias del campo ambiental: solo comodidad de este navegador (nunca la luz modulada).
+const AMBIENT_KEY = 'gamma-sound-lab:ambient';
+function loadAmbientOptions() {
+  try {
+    return sanitizeAmbientOptions(JSON.parse(localStorage.getItem(AMBIENT_KEY)));
+  } catch {
+    return sanitizeAmbientOptions(null);
+  }
+}
+function saveAmbientOptions(options) {
+  try {
+    localStorage.setItem(AMBIENT_KEY, JSON.stringify(options));
+  } catch {
+    /* sin almacenamiento: la opción dura hasta recargar */
   }
 }
 

@@ -11,6 +11,32 @@ export const AMBIENT = Object.freeze({
   hueRange: [175, 285], // turquesa → violeta según el brillo espectral
 });
 
+/**
+ * Opciones del campo, para separar qué agrada: el color, su movimiento o la combinación.
+ * - color: 'reactive' (el tono sigue el timbre) | 'fixed' (tono constante; solo cambia el brillo)
+ * - brightness: 'soft' (hasta maxLuminance) | 'dim' (hasta la mitad)
+ * Ninguna opción puede superar los límites de AMBIENT: la ausencia de destellos se mantiene.
+ */
+export const AMBIENT_OPTIONS = Object.freeze({
+  color: ['reactive', 'fixed'],
+  brightness: ['soft', 'dim'],
+});
+export const FIXED_HUE = 190;
+export const DEFAULT_AMBIENT_OPTIONS = Object.freeze({ color: 'reactive', brightness: 'soft' });
+
+/** Valida opciones (p. ej. leídas de localStorage): valores desconocidos → por defecto. */
+export function sanitizeAmbientOptions(raw) {
+  const o = raw && typeof raw === 'object' ? raw : {};
+  return {
+    color: AMBIENT_OPTIONS.color.includes(o.color) ? o.color : DEFAULT_AMBIENT_OPTIONS.color,
+    brightness: AMBIENT_OPTIONS.brightness.includes(o.brightness) ? o.brightness : DEFAULT_AMBIENT_OPTIONS.brightness,
+  };
+}
+
+/** Luminancia máxima del campo según la opción de brillo. */
+export const ambientMaxLuminance = (brightness) =>
+  brightness === 'dim' ? AMBIENT.maxLuminance / 2 : AMBIENT.maxLuminance;
+
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 
 export function createAmbientState() {
@@ -21,16 +47,19 @@ export function createAmbientState() {
  * Avanza el estado un fotograma.
  * @param features { energy: 0–1 (nivel relativo de la música), brightness: 0–1 (centroide espectral) }
  * @param dt segundos desde el fotograma anterior
+ * @param options ver AMBIENT_OPTIONS
  */
-export function stepAmbient(state, { energy, brightness }, dt) {
+export function stepAmbient(state, { energy, brightness }, dt, options = DEFAULT_AMBIENT_OPTIONS) {
+  const opts = sanitizeAmbientOptions(options);
   const t = Math.max(0, Math.min(dt, 0.25)); // tras una pausa larga no hay saltos
-  const target = AMBIENT.minLuminance + clamp01(energy) * (AMBIENT.maxLuminance - AMBIENT.minLuminance);
+  const maxL = ambientMaxLuminance(opts.brightness);
+  const target = AMBIENT.minLuminance + clamp01(energy) * (maxL - AMBIENT.minLuminance);
   const smoothed = state.luminance + (1 - Math.exp(-t / AMBIENT.levelTauSec)) * (target - state.luminance);
   const maxStep = AMBIENT.maxSlewPerSec * t;
   const luminance = state.luminance + Math.max(-maxStep, Math.min(maxStep, smoothed - state.luminance));
 
   const [h0, h1] = AMBIENT.hueRange;
-  const hueTarget = h0 + clamp01(brightness) * (h1 - h0);
+  const hueTarget = opts.color === 'fixed' ? FIXED_HUE : h0 + clamp01(brightness) * (h1 - h0);
   const hue = state.hue + (1 - Math.exp(-t / AMBIENT.hueTauSec)) * (hueTarget - state.hue);
   return { luminance, hue };
 }
