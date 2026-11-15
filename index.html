@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark" />
+    <title>Gamma Sound Lab</title>
+  </head>
+  <body data-state="idle">
+    <main class="app">
+      <header class="app__header">
+        <h1>Gamma Sound Lab</h1>
+        <p class="tagline">Laboratorio de síntesis y modulación de audio · experimental y educativo</p>
+      </header>
+
+      <aside class="notice" role="note">
+        <strong>Antes de empezar:</strong> baja el volumen del sistema. El límite de esta aplicación no garantiza
+        un nivel seguro en decibelios: depende de tus auriculares, altavoces y configuración. Detén la sesión ante
+        molestias, dolor, mareo o zumbido (tinnitus). No es un dispositivo médico.
+      </aside>
+
+      <section class="panel transport" aria-label="Reproducción">
+        <div class="status">
+          <span id="status-label" class="status__label">Detenido</span>
+          <span id="remaining" class="status__time">15:00</span>
+        </div>
+        <div class="buttons">
+          <button id="btn-start" type="button" class="btn btn--primary">Iniciar</button>
+          <button id="btn-pause" type="button" class="btn" disabled>Pausar</button>
+          <button id="btn-stop" type="button" class="btn btn--danger" disabled>Detener</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-label="Análisis de la señal">
+        <canvas id="scope" class="scope" aria-label="Forma de onda de la salida"></canvas>
+        <dl class="readout">
+          <div><dt>Modulación medida</dt><dd id="m-mod">—</dd></div>
+          <div><dt>Portadora medida</dt><dd id="m-carrier">—</dd></div>
+          <div><dt>Pico</dt><dd id="m-peak">—</dd></div>
+          <div><dt>Clipping</dt><dd id="m-clip">—</dd></div>
+        </dl>
+      </section>
+
+      <form id="controls" class="panel controls" autocomplete="off">
+        <fieldset>
+          <legend>Portadora</legend>
+          <label class="field">
+            <span>Frecuencia</span>
+            <input type="range" name="carrierHz" step="1" />
+            <output data-for="carrierHz"></output>
+          </label>
+          <label class="field">
+            <span>Forma de onda</span>
+            <select name="waveform">
+              <option value="sine">Senoidal</option>
+              <option value="triangle">Triangular</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Modulación de amplitud</legend>
+          <label class="field field--toggle">
+            <input type="checkbox" name="modulationOn" />
+            <span>Modulación activa <small>(desactívala para comparar A/B)</small></span>
+          </label>
+          <label class="field">
+            <span>Frecuencia</span>
+            <input type="range" name="modRateHz" step="0.5" />
+            <output data-for="modRateHz"></output>
+          </label>
+          <label class="field">
+            <span>Profundidad</span>
+            <input type="range" name="depth" step="1" data-scale="0.01" />
+            <output data-for="depth"></output>
+          </label>
+        </fieldset>
+
+        <fieldset>
+          <legend>Salida y sesión</legend>
+          <label class="field">
+            <span>Volumen</span>
+            <input type="range" name="volume" step="1" data-scale="0.01" />
+            <output data-for="volume"></output>
+          </label>
+          <label class="field">
+            <span>Duración (min)</span>
+            <input type="number" name="durationMin" step="1" inputmode="numeric" data-lock />
+          </label>
+          <label class="field">
+            <span>Fundido (s)</span>
+            <input type="number" name="fadeSec" step="0.5" inputmode="decimal" data-lock />
+          </label>
+        </fieldset>
+      </form>
+
+      <footer class="app__footer">Procesamiento 100 % local. No se envía audio ni datos.</footer>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
