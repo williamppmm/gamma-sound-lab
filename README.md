@@ -39,6 +39,11 @@ instalado en el sistema; no descargan navegadores.
 
 ## Vista inmersiva
 
+En **teléfonos** la app se abre directamente en esta vista, con controles básicos (fuente,
+Iniciar/Pausar, Detener, volumen y el aviso de seguridad) y la pantalla encendida mientras suena.
+"Controles completos" lleva al laboratorio; la elección se recuerda en ese teléfono. En ordenadores
+y tablets se abre con el botón **Vista inmersiva**.
+
 - **Campo de luz ambiental**: respira con la música (brillo y color), sin destellos.
 - **Luz modulada (experimental, desactivada por defecto)**: una lámpara que varía de brillo en fase
   con la modulación del sonido. Solo entre 35 y 60 Hz, en pantallas de ≥ 120 Hz, por debajo del

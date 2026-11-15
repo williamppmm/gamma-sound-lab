@@ -1,3 +1,4 @@
+import { outputGain, toDbfs } from '../audio/dsp.js';
 import {
   colorForLuminance,
   createAmbientState,
@@ -48,12 +49,23 @@ export class ImmersiveView {
   #measuring = null; // { intervals, resolve }
   #stopListeners = null;
 
-  constructor(root, { session, getAnalyser, consentDialog }) {
+  /**
+   * @param options.onParamsChange  se llama tras cambiar parámetros desde la vista (sincroniza el laboratorio)
+   * @param options.onUserClose     el usuario eligió "Controles completos"
+   */
+  constructor(root, { session, getAnalyser, consentDialog, onParamsChange = () => {}, onUserClose = () => {} }) {
     this.#session = session;
     this.#getAnalyser = getAnalyser;
+    this.#onParamsChange = onParamsChange;
     const $ = (sel) => root.querySelector(sel);
     this.#el = {
       root,
+      imSource: $('#im-source'),
+      imPlay: $('#im-play'),
+      imStop: $('#im-stop'),
+      imVolume: $('#im-volume'),
+      imVolumeOut: $('#im-volume-out'),
+      imNotice: $('#im-notice'),
       canvas: $('.immersive__ambient'),
       backdrop: $('.immersive__lamp-backdrop'),
       lamp: $('.immersive__lamp'),
@@ -90,11 +102,76 @@ export class ImmersiveView {
     e.ambientColor.addEventListener('change', onAmbient);
     e.ambientBrightness.addEventListener('change', onAmbient);
     e.lightBtn.addEventListener('click', () => (this.#light ? this.#stopLight('Luz detenida.') : this.#requestLight()));
-    e.closeBtn.addEventListener('click', () => this.close());
+    e.closeBtn.addEventListener('click', () => {
+      this.close();
+      onUserClose();
+    });
     root.addEventListener('keydown', (ev) => {
       if (ev.key === 'Escape' && !this.#light) this.close();
     });
+
+    // Controles básicos de reproducción.
+    e.imPlay.addEventListener('click', () => {
+      const s = this.#session;
+      if (s.state === 'idle') s.start();
+      else if (s.state === 'playing') s.pause();
+      else if (s.state === 'paused') s.resume();
+    });
+    e.imStop.addEventListener('click', () => this.#session.stop());
+    e.imSource.addEventListener('change', () => {
+      e.imSource.value = this.#session.update({ source: e.imSource.value }).source;
+      this.#onParamsChange();
+    });
+    e.imVolume.addEventListener('input', () => {
+      this.#session.update({ volume: Number(e.imVolume.value) / 100 });
+      this.#onParamsChange();
+    });
+    document.addEventListener('visibilitychange', () => this.#syncWakeLock());
     session.addEventListener('change', (ev) => this.#onSessionChange(ev.detail));
+  }
+
+  #onParamsChange;
+  #wakeLock = null;
+
+  /** Mantiene la pantalla encendida mientras suena con la vista abierta (si el navegador lo permite). */
+  #syncWakeLock() {
+    const want = this.isOpen && this.#session.state === 'playing' && document.visibilityState === 'visible';
+    if (want && !this.#wakeLock && navigator.wakeLock) {
+      this.#wakeLock = 'pending';
+      navigator.wakeLock
+        .request('screen')
+        .then((lock) => {
+          this.#wakeLock = lock;
+          lock.addEventListener('release', () => {
+            if (this.#wakeLock === lock) this.#wakeLock = null;
+          });
+          if (!this.isOpen || this.#session.state !== 'playing') this.#syncWakeLock();
+        })
+        .catch(() => {
+          this.#wakeLock = null;
+        });
+    } else if (!want && this.#wakeLock && this.#wakeLock !== 'pending') {
+      const lock = this.#wakeLock;
+      this.#wakeLock = null;
+      lock.release().catch(() => {});
+    }
+  }
+
+  #renderTransport({ state, remainingSec, params }) {
+    const e = this.#el;
+    const s = Math.ceil(remainingSec);
+    const time = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+    const label = { idle: 'Detenido', starting: 'Preparando…', playing: 'Reproduciendo', paused: 'En pausa', stopping: 'Finalizando…' }[state];
+    e.sessionInfo.textContent = `${label} · ${time}`;
+    e.imPlay.textContent = { playing: 'Pausar', paused: 'Reanudar', starting: 'Preparando…' }[state] ?? 'Iniciar';
+    e.imPlay.disabled = state === 'starting' || state === 'stopping';
+    e.imStop.disabled = state === 'idle' || state === 'stopping';
+    e.imSource.value = params.source;
+    e.imSource.disabled = state !== 'idle';
+    if (document.activeElement !== e.imVolume) e.imVolume.value = String(Math.round(params.volume * 100));
+    const v = params.volume;
+    e.imVolumeOut.textContent = v === 0 ? '0 %' : `${Math.round(v * 100)} % · ${toDbfs(outputGain(v)).toFixed(0)} dBFS`;
+    e.imNotice.hidden = state !== 'idle';
   }
 
   get isOpen() {
@@ -105,8 +182,10 @@ export class ImmersiveView {
     this.#el.root.hidden = false;
     this.#say(IDLE_HINT);
     this.#lastTs = 0;
+    this.#renderTransport(this.#session.snapshot());
     if (!this.#raf) this.#raf = requestAnimationFrame(this.#frame);
-    this.#el.closeBtn.focus();
+    this.#el.imPlay.focus();
+    this.#syncWakeLock();
   }
 
   close() {
@@ -114,6 +193,7 @@ export class ImmersiveView {
     this.#el.root.hidden = true;
     cancelAnimationFrame(this.#raf);
     this.#raf = 0;
+    this.#syncWakeLock();
   }
 
   // ---- Bucle de dibujo -----------------------------------------------------------
@@ -351,13 +431,9 @@ export class ImmersiveView {
     this.#say(message ?? 'Luz detenida.');
   }
 
-  #onSessionChange({ state, params, remainingSec }) {
-    if (this.isOpen) {
-      const s = Math.ceil(remainingSec);
-      const time = `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
-      const label = { idle: 'Detenido', starting: 'Preparando…', playing: 'Reproduciendo', paused: 'En pausa', stopping: 'Finalizando…' }[state];
-      this.#el.sessionInfo.textContent = `${label} · ${time}`;
-    }
+  #onSessionChange(detail) {
+    if (this.isOpen) this.#renderTransport(detail);
+    this.#syncWakeLock();
     this.#checkLight();
   }
 

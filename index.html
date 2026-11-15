@@ -248,35 +248,58 @@
 
       <div id="immersive" class="immersive" role="dialog" aria-modal="true" aria-label="Vista inmersiva" hidden>
         <canvas class="immersive__ambient" aria-hidden="true"></canvas>
+        <p class="immersive__brand" aria-hidden="true">Gamma Sound Lab</p>
         <div class="immersive__lamp-backdrop" hidden>
           <div class="immersive__lamp" aria-hidden="true"></div>
         </div>
         <div class="immersive__bar">
-          <span class="immersive__title">Vista inmersiva</span>
-          <span id="immersive-session" class="immersive__session"></span>
-          <label class="immersive__depth">
-            <span>Color</span>
-            <select id="ambient-color">
-              <option value="reactive">Reactivo (sigue el timbre)</option>
-              <option value="fixed">Fijo</option>
+          <div class="immersive__transport">
+            <select id="im-source" aria-label="Fuente">
+              <option value="bruma">Bruma de cristal</option>
+              <option value="generative">Composición generativa</option>
+              <option value="tone-rain">Tono y lluvia</option>
             </select>
+            <button id="im-play" type="button" class="btn btn--primary">Iniciar</button>
+            <button id="im-stop" type="button" class="btn btn--danger" disabled>Detener</button>
+            <span id="immersive-session" class="immersive__session" role="status" aria-live="polite"></span>
+          </div>
+          <label class="immersive__volume">
+            <span>Volumen</span>
+            <input type="range" id="im-volume" min="0" max="100" step="1" />
+            <output id="im-volume-out"></output>
           </label>
-          <label class="immersive__depth">
-            <span>Brillo</span>
-            <select id="ambient-brightness">
-              <option value="soft">Suave</option>
-              <option value="dim">Tenue</option>
-            </select>
-          </label>
-          <label class="immersive__depth">
-            <span>Profundidad de la luz</span>
-            <input type="range" id="light-depth" step="1" />
-            <output id="light-depth-out"></output>
-          </label>
-          <button id="btn-light" type="button" class="btn btn--small">Luz modulada (experimental)…</button>
-          <button id="btn-immersive-close" type="button" class="btn btn--small">Cerrar</button>
+          <p id="im-notice" class="immersive__notice">
+            Baja el volumen del sistema antes de empezar y detén la sesión ante cualquier molestia.
+            No es un dispositivo médico.
+          </p>
+          <details class="immersive__more">
+            <summary>Ajustes visuales y luz</summary>
+            <div class="immersive__options">
+              <label class="immersive__depth">
+                <span>Color</span>
+                <select id="ambient-color">
+                  <option value="reactive">Reactivo (sigue el timbre)</option>
+                  <option value="fixed">Fijo</option>
+                </select>
+              </label>
+              <label class="immersive__depth">
+                <span>Brillo</span>
+                <select id="ambient-brightness">
+                  <option value="soft">Suave</option>
+                  <option value="dim">Tenue</option>
+                </select>
+              </label>
+              <label class="immersive__depth">
+                <span>Profundidad de la luz</span>
+                <input type="range" id="light-depth" step="1" />
+                <output id="light-depth-out"></output>
+              </label>
+              <button id="btn-light" type="button" class="btn btn--small">Luz modulada (experimental)…</button>
+            </div>
+            <p id="light-status" class="immersive__status" role="status" aria-live="polite"></p>
+          </details>
+          <button id="btn-immersive-close" type="button" class="btn btn--small immersive__close">Controles completos</button>
         </div>
-        <p id="light-status" class="immersive__status" role="status" aria-live="polite"></p>
       </div>
 
       <dialog id="light-consent" class="consent" aria-labelledby="consent-title">

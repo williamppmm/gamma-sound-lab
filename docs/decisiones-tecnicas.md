@@ -224,3 +224,15 @@ La sonda verifica la automatización (LFO, profundidad, A/B), no la multiplicaci
   condiciones comprobadas al activarla, incluido un cambio de frecuencia dentro del rango.
 - El campo ambiental admite color fijo o reactivo y brillo suave o tenue (en `localStorage`,
   validado al leerlo); todas las combinaciones probadas sin destellos.
+
+## 18. Vista simple en teléfonos
+- `src/ui/viewMode.js` (pura, probada): un dispositivo "parece un teléfono" si tiene pantalla táctil
+  y su lado corto mide ≤ 600 px (vale también en horizontal; tablets y ordenadores no). En teléfonos
+  la app arranca en la vista inmersiva; la elección explícita del usuario ("Controles completos" o
+  "Vista inmersiva") se recuerda solo en teléfonos.
+- La vista incluye controles básicos sincronizados con la sesión y con el laboratorio (fuente,
+  Iniciar/Pausar/Reanudar, Detener, volumen) y el aviso de seguridad en reposo. Ajustes visuales y
+  luz modulada quedan en un desplegable (plegado en teléfonos).
+- Screen Wake Lock mientras suena con la vista abierta, para que la pantalla no se apague a mitad
+  de sesión; se libera al pausar, detener, cerrar la vista u ocultar la pestaña.
+- E2E con un teléfono emulado (`tests/e2e/mobile.spec.js`).

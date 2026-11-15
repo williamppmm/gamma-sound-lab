@@ -11,6 +11,7 @@ import { ExportPanel } from './ui/ExportPanel.js';
 import { renderExport, toWavBlob } from './export/AudioExporter.js';
 import { registerServiceWorker } from './pwa/register.js';
 import { ImmersiveView } from './ui/ImmersiveView.js';
+import { currentDevice, initialView, isPhoneLike, readStoredView, storeView } from './ui/viewMode.js';
 import { PresetManager } from './presets/PresetManager.js';
 import { openDatabase, PresetStore } from './storage/Database.js';
 import { defaultParams } from './utils/validators.js';
@@ -79,8 +80,17 @@ const immersive = new ImmersiveView($('#immersive'), {
   session,
   getAnalyser: () => engine.visualAnalyser,
   consentDialog: $('#light-consent'),
+  onParamsChange: () => controls.write(session.params),
+  onUserClose: () => storeView('lab', currentDevice()),
 });
-$('#btn-immersive').addEventListener('click', () => immersive.open());
+$('#btn-immersive').addEventListener('click', () => {
+  immersive.open();
+  storeView('simple', currentDevice());
+});
+// En teléfonos se empieza en la vista de colores con controles básicos (salvo que el
+// usuario haya elegido el laboratorio en este dispositivo), con los ajustes visuales plegados.
+$('.immersive__more').open = !isPhoneLike(currentDevice());
+if (initialView({ stored: readStoredView(), ...currentDevice() }) === 'simple') immersive.open();
 
 // ---- PWA: uso sin conexión y aviso de actualización ------------------------------
 registerServiceWorker({
