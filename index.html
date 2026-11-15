@@ -44,11 +44,13 @@
         <canvas id="scope" class="scope" aria-label="Forma de onda de la salida" aria-describedby="scope-caption"></canvas>
         <p id="scope-caption" class="scope__caption">Escala: borde = volumen 100 % (−6 dBFS)</p>
         <dl class="readout">
-          <div><dt id="m-mod-label">Modulación medida</dt><dd id="m-mod">—</dd></div>
+          <div><dt id="m-probe-label">Modulador (medido)</dt><dd id="m-probe">—</dd></div>
+          <div><dt>Modulación en la salida</dt><dd id="m-mod">—</dd></div>
           <div><dt>Portadora medida</dt><dd id="m-carrier">—</dd></div>
           <div><dt>Pico</dt><dd id="m-peak">—</dd></div>
           <div><dt>Clipping</dt><dd id="m-clip">—</dd></div>
         </dl>
+        <p id="bruma-note" class="scope__caption" hidden></p>
       </section>
 
       <form id="controls" class="panel controls" autocomplete="off">

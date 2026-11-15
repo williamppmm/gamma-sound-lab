@@ -1,7 +1,7 @@
 import './styles/main.css';
 import { AudioEngine } from './audio/AudioEngine.js';
 import { SignalAnalyzer } from './audio/Analyzer.js';
-import { MOD_DETECTION, toDbfs } from './audio/dsp.js';
+import { estimateModulation, modulatedEnergyShare, MOD_DETECTION, toDbfs } from './audio/dsp.js';
 import { MAX_MASTER_GAIN } from './audio/limits.js';
 import { SessionManager } from './sessions/SessionManager.js';
 import { Controls } from './ui/Controls.js';
@@ -56,11 +56,59 @@ $('#btn-seed').addEventListener('click', () => {
 
 // ---- Lectura de mediciones ---------------------------------------------------
 const readout = {
+  probe: $('#m-probe'),
   mod: $('#m-mod'),
   carrier: $('#m-carrier'),
   peak: $('#m-peak'),
   clip: $('#m-clip'),
 };
+
+// Sonda del modulador: mide la ganancia g(t) realmente aplicada (válido con cualquier fuente).
+let probeAnalyzer = null;
+function measureProbe() {
+  const node = session.modulationProbe;
+  if (!node) return null;
+  if (probeAnalyzer?.node !== node) probeAnalyzer = new SignalAnalyzer(node);
+  return estimateModulation(probeAnalyzer.read(), node.context.sampleRate);
+}
+
+function showProbe(m) {
+  const el = readout.probe;
+  el.dataset.status = m?.status ?? '';
+  if (!m) {
+    el.textContent = '—';
+    el.title = '';
+  } else if (m.status === 'ok') {
+    el.textContent = `${m.frequency.toFixed(1)} Hz · ${Math.round(m.depth * 100)} %`;
+    el.title = 'Ganancia que el modulador aplica en este momento, medida con una sonda interna.';
+  } else {
+    el.textContent = m.status === 'none' ? 'sin modulación' : MOD_STATUS_TEXT[m.status];
+    el.title = MOD_STATUS_HINT[m.status] ?? '';
+  }
+}
+
+/** Nota de Bruma: qué parte se modula y cuánto pesa en la mezcla. */
+function showBrumaNote(params) {
+  const note = $('#bruma-note');
+  const info = session.voiceInfo;
+  if (params.source !== 'bruma') {
+    note.hidden = true;
+    return;
+  }
+  note.hidden = false;
+  let text = 'La modulación se aplica solo a los acordes; la melodía suena sin modular.';
+  if (info) {
+    const share = modulatedEnergyShare({
+      modulatedLevel: params.chordsLevel,
+      modulatedRms: info.chordsRms,
+      otherLevel: params.melodyLevel,
+      otherRms: info.melodyRms,
+    });
+    text += ` Con estos niveles, los acordes son ≈ ${Math.round(share * 100)} % de la energía de la mezcla.`;
+    text += ` La pieza dura ${info.loopSec.toFixed(1)} s y se repite en bucle.`;
+  }
+  note.textContent = text;
+}
 
 // Solo se muestran cifras cuando la lectura es fiable (ver estimateModulation en dsp.js).
 const MOD_STATUS_TEXT = {
@@ -74,18 +122,6 @@ const MOD_STATUS_HINT = {
   short: `Caben menos de ${MOD_DETECTION.minCycles} ciclos en la ventana de análisis.`,
 };
 
-function showBrumaModulation({ modulationOn, chordsLevel, modRateHz, brumaDepth }) {
-  readout.mod.dataset.status = '';
-  readout.mod.title = 'Ajuste del modulador. La forma de onda y el pico se miden en la salida completa.';
-  if (!modulationOn || brumaDepth === 0) {
-    readout.mod.textContent = 'Desactivada';
-  } else if (chordsLevel === 0) {
-    readout.mod.textContent = 'Acordes silenciados';
-  } else {
-    readout.mod.textContent = `${modRateHz.toFixed(1)} Hz · ${Math.round(brumaDepth * 100)} %`;
-  }
-}
-
 function showMeasurement(m) {
   const p = session.params;
   const isBruma = p.source === 'bruma';
@@ -93,12 +129,17 @@ function showMeasurement(m) {
     for (const el of Object.values(readout)) el.textContent = '—';
     readout.mod.dataset.status = '';
     readout.mod.title = '';
-    if (isBruma) showBrumaModulation(p);
+    readout.probe.dataset.status = '';
     readout.clip.dataset.alert = 'false';
     return;
   }
   if (isBruma) {
-    showBrumaModulation(p);
+    // La música tiene batidos propios entre notas: medir la salida daría lecturas falsas.
+    readout.mod.dataset.status = 'none';
+    readout.mod.textContent = 'no aplicable a música';
+    readout.mod.title =
+      'Los acordes ya fluctúan en amplitud por los batidos entre notas, así que la salida no permite ' +
+      'distinguir la modulación añadida. La verificación se hace con la sonda del modulador.';
   } else {
     readout.mod.dataset.status = m.status;
     readout.mod.textContent =
@@ -122,11 +163,13 @@ function setMeasuring(on) {
     measureTimer = setInterval(() => {
       const estimateTone = session.params.source !== 'bruma';
       showMeasurement(getAnalyzer()?.measure({ estimateTone }));
+      showProbe(measureProbe());
     }, 1000);
   } else if (!on && measureTimer) {
     clearInterval(measureTimer);
     measureTimer = 0;
     showMeasurement(null);
+    showProbe(null);
   }
 }
 
@@ -149,12 +192,12 @@ function render({ state, remainingSec, reason, params }) {
     sourceSelect.value = lastSource;
     controls.showSource(lastSource);
     $('#mod-target').textContent = isBruma ? '(solo acordes)' : '(toda la mezcla)';
-    $('#m-mod-label').textContent = isBruma ? 'Modulación de acordes (ajuste)' : 'Modulación medida';
+    $('#m-probe-label').textContent = isBruma ? 'Modulador de acordes (medido)' : 'Modulador (medido)';
     showMeasurement(null);
   }
-  if (params !== lastParams) {
+  if (params !== lastParams || state !== lastState) {
     lastParams = params;
-    if (params.source === 'bruma') showBrumaModulation(params);
+    showBrumaNote(params);
   }
   if (state === lastState && !reason) return;
   lastState = state;
@@ -190,4 +233,5 @@ btnStart.addEventListener('click', () => {
 window.addEventListener('pagehide', () => {
   session.panic();
   analyzer = null; // no retener nodos del contexto cerrado
+  probeAnalyzer = null;
 });

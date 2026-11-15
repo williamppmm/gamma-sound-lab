@@ -24,6 +24,11 @@ export class SessionVoice {
     this.mixer.output.connect(this.mod.input);
   }
 
+  /** AnalyserNode con la ganancia de modulación g(t) aplicada (ver Modulator). */
+  get modulationProbe() {
+    return this.mod.probe;
+  }
+
   connect(destination) {
     this.mod.output.connect(destination);
   }

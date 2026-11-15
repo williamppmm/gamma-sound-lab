@@ -61,6 +61,14 @@ export class SessionManager extends EventTarget {
   snapshot() {
     return { state: this.#state, remainingSec: this.remainingSec, params: this.#params };
   }
+  /** Analizador con la ganancia de modulación aplicada por la voz activa, o null. */
+  get modulationProbe() {
+    return this.#voice?.modulationProbe ?? null;
+  }
+  /** Información de la fuente activa (p. ej. duración del bucle de Bruma), o null. */
+  get voiceInfo() {
+    return this.#voice?.info ?? null;
+  }
 
   /** Cambia parámetros en caliente. Los marcados sessionLocked quedan fijos durante la sesión. */
   update(partial) {

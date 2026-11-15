@@ -35,6 +35,17 @@ export function channelGains(levels) {
   return Object.fromEntries(Object.entries(levels).map(([name, level]) => [name, level * k]));
 }
 
+/**
+ * Fracción aproximada de la energía de la mezcla que pasa por el modulador, cuando solo
+ * se modula un canal (p. ej. los acordes de Bruma). Usa el RMS de cada pista y los niveles
+ * del mezclador; la normalización de channelGains afecta a todos los canales por igual.
+ */
+export function modulatedEnergyShare({ modulatedLevel, modulatedRms, otherLevel, otherRms }) {
+  const em = (modulatedLevel * modulatedRms) ** 2;
+  const eo = (otherLevel * otherRms) ** 2;
+  return em + eo > 0 ? em / (em + eo) : 0;
+}
+
 const WAVES = {
   sine: (ph) => Math.sin(ph),
   triangle: (ph) => (2 / Math.PI) * Math.asin(Math.sin(ph)),

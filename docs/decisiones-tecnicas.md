@@ -120,10 +120,29 @@ para los acordes. Se cargan al iniciar y se guardan como búferes por contexto. 
 en el mismo instante y repiten juntas. El modulador se inserta solo en los acordes antes del
 mezclador. El ajuste inicial es 40 Hz con una profundidad del 20 %.
 
-La pieza pasa por el mismo volumen maestro, fundidos, limitador y osciloscopio. El panel muestra
-el ajuste del modulador de acordes y el pico de salida medido. El estimador de tono y portadora
-se reserva para Tono y lluvia. Detener durante la preparación cancela la carga.
+La pieza pasa por el mismo volumen maestro, fundidos, limitador y osciloscopio. Detener durante
+la preparación cancela la carga.
+
+**Datos de las pistas** (medidos con ffmpeg): FLAC estéreo, 48 kHz, 16 bits, 27,26 s cada una,
+misma longitud y costura de bucle sin salto. Pico por canal: acordes −0,9 dBFS, melodía −8,0 dBFS.
+RMS: acordes −13,25 dBFS, melodía −18,07 dBFS → con niveles 100/100 los acordes (lo único
+modulado) son ≈ 75 % de la energía de la mezcla.
 
 OpenAI Codex generó la composición y la síntesis de Bruma de cristal para Gamma Sound Lab.
 Las dos pistas FLAC se ofrecen bajo **CC0 1.0**. La [nota de procedencia y licencia](../src/assets/LICENSE-ASSETS.md)
 detalla el alcance y las etiquetas de los archivos.
+
+### Verificación de la modulación en música
+Calibración con las pistas reales (ventanas de 32768 muestras, salto de 12000):
+- Acordes **sin** AM añadida: el estimador de salida da 18 de 107 lecturas "válidas" entre
+  27 y 98 Hz, con profundidades de 29–71 %. Son batidos entre notas del propio acorde.
+- Acordes con AM de 40 Hz al 10, 20 o 30 %: resultados prácticamente idénticos a sin AM. La AM
+  añadida no se distingue de la modulación natural de la música.
+
+Conclusión: en material musical, medir la salida no verifica la modulación. Por eso el
+`Modulator` incluye una **sonda**: un `ConstantSourceNode` (valor 1) atraviesa un `GainNode`
+que recibe el mismo valor base y el mismo LFO que la ganancia real, y va a un `AnalyserNode`.
+Su salida es exactamente g(t); el mismo `estimateModulation` la mide con precisión (pruebas en
+`tests/probe.test.js`, que reproducen el caso con un acorde de dos notas que late a 27 Hz).
+La sonda verifica la automatización (LFO, profundidad, A/B), no la multiplicación del
+`GainNode`, que es trivial. En Tono y lluvia se muestran ambas: la sonda y la estimación de salida.

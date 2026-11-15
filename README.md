@@ -26,8 +26,12 @@ Requiere Node.js 22.12+ o 24+ (lo exige Vitest 5) y un navegador Chromium.
 - Profundidad regulable y conmutador A/B (modulado / sin modular)
 - Volumen limitado (máx. −6 dBFS) + limitador de seguridad
 - Sesiones con duración obligatoria, fundidos, pausa/reanudación y parada automática
-- Osciloscopio, pico y clipping en ambas fuentes. En Tono y lluvia se muestran las estimaciones
-  cuando la señal permite medirlas. En Bruma se muestra el ajuste de modulación de los acordes.
+- Osciloscopio, pico y clipping en ambas fuentes.
+- **Modulador (medido)**: una sonda interna reproduce la ganancia que el modulador aplica y se
+  mide en vivo; vale para cualquier fuente. **Modulación en la salida** solo se estima en Tono y
+  lluvia: en música los batidos entre notas producen lecturas falsas.
+- En Bruma, la interfaz indica que la melodía no se modula y qué parte de la energía de la mezcla
+  pasan por el modulador (≈ 75 % con niveles 100/100). La pieza es un bucle de 27,3 s.
 - La composición y la síntesis de Bruma de cristal se generaron con OpenAI Codex para Gamma Sound
   Lab. Las dos pistas FLAC se ofrecen bajo [CC0 1.0](src/assets/LICENSE-ASSETS.md).
 

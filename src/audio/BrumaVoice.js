@@ -13,6 +13,21 @@ async function decodeTrack(ctx, url, signal) {
   return ctx.decodeAudioData(encoded);
 }
 
+const rmsCache = new WeakMap();
+
+/** RMS de todos los canales de un AudioBuffer (se calcula una vez por búfer). */
+function bufferRms(buffer) {
+  if (!rmsCache.has(buffer)) {
+    let sum = 0;
+    for (let c = 0; c < buffer.numberOfChannels; c++) {
+      const data = buffer.getChannelData(c);
+      for (let i = 0; i < data.length; i++) sum += data[i] * data[i];
+    }
+    rmsCache.set(buffer, Math.sqrt(sum / (buffer.length * buffer.numberOfChannels)));
+  }
+  return rmsCache.get(buffer);
+}
+
 const levelsOf = ({ melodyLevel, chordsLevel }) => ({ melody: melodyLevel, chords: chordsLevel });
 const modulationOf = (params) => ({ ...params, depth: params.brumaDepth });
 
@@ -34,7 +49,24 @@ export class BrumaVoice {
     return new BrumaVoice(ctx, params, buffers);
   }
 
+  /** AnalyserNode con la ganancia de modulación g(t) aplicada a los acordes (ver Modulator). */
+  get modulationProbe() {
+    return this.mod.probe;
+  }
+
+  /** Datos de las pistas para la interfaz: duración del bucle y RMS de cada pista. */
+  get info() {
+    return this.#info;
+  }
+
+  #info;
+
   constructor(ctx, params, [melody, chords]) {
+    this.#info = Object.freeze({
+      loopSec: melody.duration,
+      melodyRms: bufferRms(melody),
+      chordsRms: bufferRms(chords),
+    });
     this.mixer = new Mixer(ctx, levelsOf(params));
     this.melody = new AudioBufferSourceNode(ctx, { buffer: melody, loop: true });
     this.chords = new AudioBufferSourceNode(ctx, { buffer: chords, loop: true });
