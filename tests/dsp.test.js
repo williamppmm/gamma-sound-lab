@@ -25,6 +25,19 @@ describe('modulación de amplitud', () => {
     expect(Math.abs(m.depth - depth)).toBeLessThan(0.02);
   });
 
+  it.each([
+    [40, 0.5, 220, 'sine'],
+    [40, 1, 440, 'sine'],
+    [37.5, 0.3, 750, 'triangle'], // 2·fc cerca de múltiplos de la tasa decimada
+    [100, 0.6, 1000, 'sine'],
+    [5, 0.5, 220, 'sine'], // ~3 ciclos en la ventana; por debajo de ~3 Hz no es medible con 0,68 s
+  ])('ventana real del analizador (32768 muestras): %s Hz, d=%s, fc=%s %s', (modRateHz, depth, carrierHz, waveform) => {
+    const x = renderAmTone(params({ modRateHz, depth, carrierHz, waveform }), SR, 32768 / SR);
+    const m = estimateModulation(x, SR);
+    expect(Math.abs(m.frequency - modRateHz)).toBeLessThanOrEqual(0.75);
+    expect(Math.abs(m.depth - depth)).toBeLessThan(0.03);
+  });
+
   it('no está fija en 40 Hz', () => {
     const m = estimateModulation(renderAmTone(params({ modRateHz: 10 }), SR, 1), SR);
     expect(Math.abs(m.frequency - 10)).toBeLessThanOrEqual(0.25);

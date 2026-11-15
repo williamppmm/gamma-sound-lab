@@ -11,6 +11,15 @@ export const amBaseGain = (depth) => 1 - depth / 2;
 export const amLfoGain = (depth) => depth / 2;
 export const outputGain = (volume) => Math.min(Math.max(volume, 0), 1) * MAX_MASTER_GAIN;
 
+/**
+ * Ganancia de salida del mezclador: si la suma de niveles supera 1 se reduce
+ * proporcionalmente. Como cada fuente tiene pico ≤ 1, la mezcla nunca pasa de 1.
+ */
+export const mixNormalization = (levels) => {
+  const sum = levels.reduce((a, b) => a + b, 0);
+  return sum > 1 ? 1 / sum : 1;
+};
+
 const WAVES = {
   sine: (ph) => Math.sin(ph),
   triangle: (ph) => (2 / Math.PI) * Math.asin(Math.sin(ph)),
@@ -79,6 +88,40 @@ function goertzelMagnitude(y, sampleRate, freq) {
   return Math.sqrt(Math.max(0, s1 * s1 + s2 * s2 - coeff * s1 * s2));
 }
 
+// Decimación CIC: CIC_ORDER medias móviles de longitud D y luego 1 de cada D muestras.
+// Ceros de la respuesta en múltiplos de sampleRate/D → atenúa fuertemente lo que se replegaría.
+const CIC_ORDER = 3;
+
+function boxcarValid(x, d) {
+  const n = x.length - d + 1;
+  if (n <= 0) return new Float64Array(0);
+  const y = new Float64Array(n);
+  let s = 0;
+  for (let i = 0; i < d; i++) s += x[i];
+  y[0] = s / d;
+  for (let i = 1; i < n; i++) {
+    s += x[i + d - 1] - x[i - 1];
+    y[i] = s / d;
+  }
+  return y;
+}
+
+function decimate(x, d) {
+  let y = x;
+  for (let k = 0; k < CIC_ORDER; k++) y = boxcarValid(y, d);
+  const m = Math.floor(y.length / d);
+  const out = new Float64Array(m);
+  for (let i = 0; i < m; i++) out[i] = y[i * d];
+  return out;
+}
+
+/** Ganancia del filtro CIC a la frecuencia f (para compensar su caída en la banda útil). */
+function cicGain(f, d, sampleRate) {
+  if (d <= 1 || f === 0) return 1;
+  const g = Math.sin((Math.PI * f * d) / sampleRate) / (d * Math.sin((Math.PI * f) / sampleRate));
+  return Math.abs(g) ** CIC_ORDER;
+}
+
 /**
  * Estima frecuencia y profundidad de una modulación AM senoidal.
  *
@@ -86,31 +129,44 @@ function goertzelMagnitude(y, sampleRate, freq) {
  * la parte de baja frecuencia de x² es A²/2, cuya media es (a² + b²/2)/2 y
  * cuya componente en fm tiene amplitud a·b. Con r = amplitud(fm) / media se
  * despeja k = b/a y de ahí la profundidad d = 2k / (1 + k).
- * Se usa ventana de Hann para tolerar ventanas sin ciclos enteros.
+ *
+ * Rendimiento: solo interesa x² por debajo de maxHz, así que se decima con un
+ * filtro CIC hasta ~8·maxHz (48 kHz → 800 Hz, factor 60) antes de buscar con
+ * Goertzel. Se compensa la caída del CIC y se usa ventana de Hann para tolerar
+ * ventanas sin ciclos enteros. Con 32768 muestras: ~25 ms → < 1 ms.
  */
 export function estimateModulation(x, sampleRate, { minHz = 1, maxHz = 100, stepHz = 0.25 } = {}) {
   const n = x.length;
   if (n < 16) return { frequency: 0, depth: 0, silent: true };
 
-  const w = new Float64Array(n);
+  const sq = new Float64Array(n);
+  for (let i = 0; i < n; i++) sq[i] = x[i] * x[i];
+
+  let d = Math.max(1, Math.floor(sampleRate / (8 * maxHz)));
+  if (n / d < 64) d = 1; // ventana demasiado corta para decimar
+  const z = d > 1 ? decimate(sq, d) : sq;
+  const fs = sampleRate / d;
+  const m = z.length;
+
   let sumW = 0;
   let acc = 0;
-  for (let i = 0; i < n; i++) {
-    const wi = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (n - 1));
+  const w = new Float64Array(m);
+  for (let i = 0; i < m; i++) {
+    const wi = 0.5 - 0.5 * Math.cos((2 * Math.PI * i) / (m - 1));
     w[i] = wi;
     sumW += wi;
-    acc += wi * x[i] * x[i];
+    acc += wi * z[i];
   }
   const dc = acc / sumW;
   if (dc < 1e-12) return { frequency: 0, depth: 0, silent: true };
 
-  const y = new Float64Array(n);
-  for (let i = 0; i < n; i++) y[i] = w[i] * (x[i] * x[i] - dc);
+  const y = new Float64Array(m);
+  for (let i = 0; i < m; i++) y[i] = w[i] * (z[i] - dc);
 
   let bestF = minHz;
   let bestMag = -1;
   for (let f = minHz; f <= maxHz + 1e-9; f += stepHz) {
-    const mag = goertzelMagnitude(y, sampleRate, f);
+    const mag = goertzelMagnitude(y, fs, f) / cicGain(f, d, sampleRate);
     if (mag > bestMag) {
       bestMag = mag;
       bestF = f;

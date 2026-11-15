@@ -5,6 +5,8 @@ const FORMAT = {
   carrierHz: (v) => `${Math.round(v)} Hz`,
   modRateHz: (v) => `${v.toFixed(1)} Hz`,
   depth: (v) => `${Math.round(v * 100)} %`,
+  toneLevel: (v) => `${Math.round(v * 100)} %`,
+  rainLevel: (v) => `${Math.round(v * 100)} %`,
   volume: (v) => (v === 0 ? '0 %' : `${Math.round(v * 100)} % · ${toDbfs(outputGain(v)).toFixed(0)} dBFS`),
 };
 

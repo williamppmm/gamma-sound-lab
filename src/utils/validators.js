@@ -16,7 +16,8 @@ export function sanitizeValue(key, value, fallback) {
   switch (spec.kind) {
     case 'number': {
       const n = toNumber(value);
-      return Number.isFinite(n) ? clamp(n, spec.min, spec.max) : fallback;
+      if (!Number.isFinite(n)) return fallback;
+      return clamp(spec.integer ? Math.round(n) : n, spec.min, spec.max);
     }
     case 'enum':
       return spec.values.includes(value) ? value : fallback;

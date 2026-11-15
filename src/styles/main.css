@@ -192,6 +192,20 @@ legend {
 .field--toggle {
   grid-template-columns: auto 1fr;
 }
+.inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.btn--small {
+  padding: 4px 12px;
+  font-size: 0.85rem;
+}
+legend small {
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 400;
+}
 .field small {
   color: var(--muted);
 }

@@ -15,8 +15,9 @@ npm run build    # versión estática en dist/
 
 Requiere Node.js 20+ y un navegador Chromium.
 
-## Estado: MVP 1.0
+## Estado: MVP 1.0 + Fase 2a
 
+- Mezclador: tono + lluvia generada con semilla reproducible
 - Portadora (100–1000 Hz, senoidal/triangular) con modulación de amplitud (1–100 Hz, por defecto 40 Hz)
 - Profundidad regulable y conmutador A/B (modulado / sin modular)
 - Volumen limitado (máx. −6 dBFS) + limitador de seguridad
@@ -27,7 +28,8 @@ Requiere Node.js 20+ y un navegador Chromium.
 
 ```
 src/
-  audio/      motor (sin DOM): AudioEngine, Synthesizer, Modulator, ToneVoice, Analyzer,
+  audio/      motor (sin DOM): AudioEngine, SessionVoice, Mixer, Synthesizer, RainSource,
+              Modulator, Analyzer, generators.js (PRNG + lluvia),
               dsp.js (funciones puras), limits.js (rangos y límites), params.js
   sessions/   SessionManager: único punto que la UI usa para controlar el audio
   ui/         Controls, Visualizer

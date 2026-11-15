@@ -1,7 +1,7 @@
 import { outputGain } from '../audio/dsp.js';
 import { PAUSE_FADE_SEC, STOP_FADE_SEC } from '../audio/limits.js';
 import { holdAt } from '../audio/params.js';
-import { ToneVoice } from '../audio/ToneVoice.js';
+import { SessionVoice } from '../audio/SessionVoice.js';
 import { sanitizeParams } from '../utils/validators.js';
 
 const START_DELAY_SEC = 0.05;
@@ -27,11 +27,19 @@ export class SessionManager extends EventTarget {
   #endTime = 0;
   #ticker = 0;
   #queueTail = Promise.resolve();
+  #generation = 0;
+  #createVoice;
 
-  constructor(engine, params) {
+  /**
+   * @param engine  AudioEngine (o un doble de pruebas con la misma interfaz)
+   * @param params  parámetros iniciales
+   * @param options.createVoice  fábrica (ctx, params) → voz; permite probar sin Web Audio
+   */
+  constructor(engine, params, { createVoice = (ctx, p) => new SessionVoice(ctx, p) } = {}) {
     super();
     this.#engine = engine;
     this.#params = sanitizeParams(params);
+    this.#createVoice = createVoice;
   }
 
   get state() {
@@ -67,20 +75,25 @@ export class SessionManager extends EventTarget {
   }
 
   start() {
-    return this.#enqueue(() => this.#start());
+    return this.#enqueue((gen) => this.#start(gen));
   }
   pause() {
-    return this.#enqueue(() => this.#pause());
+    return this.#enqueue((gen) => this.#pause(gen));
   }
   resume() {
-    return this.#enqueue(() => this.#resume());
+    return this.#enqueue((gen) => this.#resume(gen));
   }
   stop() {
-    return this.#enqueue(() => this.#stopGracefully());
+    return this.#enqueue((gen) => this.#stopGracefully(gen));
   }
 
-  /** Parada inmediata y sin esperas (cierre de pestaña). */
+  /**
+   * Parada inmediata y sin esperas (cierre de pestaña). Invalida todas las operaciones
+   * encoladas o en vuelo (nueva generación), pero permite iniciar sesiones nuevas después,
+   * p. ej. si el navegador restaura la página desde su caché al volver atrás.
+   */
   panic() {
+    this.#generation++;
     clearInterval(this.#ticker);
     this.#voice?.dispose();
     this.#voice = null;
@@ -90,15 +103,28 @@ export class SessionManager extends EventTarget {
 
   // ---- internos ---------------------------------------------------------------
 
+  /**
+   * Serializa operaciones. Cada una recibe la generación vigente al encolarla; si `panic()`
+   * la cambia, la operación se descarta (si aún no empezó) o se abandona tras su próximo await.
+   */
   #enqueue(op) {
-    const run = this.#queueTail.then(op).catch((err) => this.#fail(err));
+    const gen = this.#generation;
+    const run = this.#queueTail
+      .then(() => (this.#isCurrent(gen) ? op(gen) : undefined))
+      .catch((err) => this.#isCurrent(gen) && this.#fail(err));
     this.#queueTail = run;
     return run;
   }
 
-  async #start() {
+  #isCurrent(gen) {
+    return gen === this.#generation;
+  }
+
+  async #start(gen) {
     if (this.#state !== 'idle') await this.#halt('restart');
+    if (!this.#isCurrent(gen)) return;
     await this.#engine.ensureRunning();
+    if (!this.#isCurrent(gen)) return;
 
     const ctx = this.#engine.context;
     const p = this.#params;
@@ -108,7 +134,7 @@ export class SessionManager extends EventTarget {
     fade.setValueAtTime(0, ctx.currentTime);
     this.#engine.setMasterGain(outputGain(p.volume), 0);
 
-    this.#voice = new ToneVoice(ctx, p);
+    this.#voice = this.#createVoice(ctx, p);
     this.#voice.connect(this.#engine.input);
     this.#voice.start(t0);
 
@@ -118,7 +144,7 @@ export class SessionManager extends EventTarget {
     this.#setState('playing');
   }
 
-  async #pause() {
+  async #pause(gen) {
     if (this.#state !== 'playing') return;
     const ctx = this.#engine.context;
     const g = this.#engine.fadeGain;
@@ -126,20 +152,22 @@ export class SessionManager extends EventTarget {
     holdAt(g, now);
     g.linearRampToValueAtTime(0, now + PAUSE_FADE_SEC);
     await wait(PAUSE_FADE_SEC * 1000 + 30);
-    if (this.#state !== 'playing') return; // la sesión terminó durante el fundido
+    // La sesión pudo terminar o cerrarse durante el fundido.
+    if (!this.#isCurrent(gen) || this.#state !== 'playing') return;
     await this.#engine.suspend(); // congela ctx.currentTime → el temporizador también se pausa
     this.#endTime += PAUSE_FADE_SEC;
     this.#setState('paused');
   }
 
-  async #resume() {
+  async #resume(gen) {
     if (this.#state !== 'paused') return;
     await this.#engine.ensureRunning();
+    if (!this.#isCurrent(gen)) return;
     this.#scheduleEnvelope(PAUSE_FADE_SEC, this.#engine.context.currentTime);
     this.#setState('playing');
   }
 
-  async #stopGracefully() {
+  async #stopGracefully(gen) {
     if (this.#state === 'idle' || this.#state === 'stopping') return;
     if (this.#state === 'paused') return this.#halt('stopped');
     this.#setState('stopping');
@@ -148,6 +176,7 @@ export class SessionManager extends EventTarget {
     holdAt(g, now);
     g.linearRampToValueAtTime(0, now + STOP_FADE_SEC);
     await wait(STOP_FADE_SEC * 1000 + 50);
+    if (!this.#isCurrent(gen)) return;
     await this.#halt('stopped');
   }
 
@@ -167,17 +196,25 @@ export class SessionManager extends EventTarget {
     await this.#engine.suspend();
   }
 
-  /** Programa: subida a 1 en `inSec`, meseta, y bajada a 0 que termina exactamente en endTime. */
+  /**
+   * Programa: subida en `inSec`, meseta a 1 y bajada a 0 que termina exactamente en endTime.
+   * Si la subida acaba dentro del fundido de salida (reanudar en los últimos segundos),
+   * sube solo hasta el nivel que la curva de salida tiene en ese instante y continúa desde ahí.
+   */
   #scheduleEnvelope(inSec, from) {
     const g = this.#engine.fadeGain;
+    const end = this.#endTime;
+    const fadeOut = this.#params.fadeSec;
     const peakAt = from + inSec;
-    const fadeOutStart = this.#endTime - this.#params.fadeSec;
+    const fadeOutStart = end - fadeOut;
     holdAt(g, from);
     if (fadeOutStart > peakAt) {
       g.linearRampToValueAtTime(1, peakAt);
       g.setValueAtTime(1, fadeOutStart);
+    } else if (peakAt < end) {
+      g.linearRampToValueAtTime((end - peakAt) / fadeOut, peakAt);
     }
-    g.linearRampToValueAtTime(0, this.#endTime);
+    g.linearRampToValueAtTime(0, end);
   }
 
   #startTicker() {

@@ -59,7 +59,28 @@
         </fieldset>
 
         <fieldset>
-          <legend>Modulación de amplitud</legend>
+          <legend>Mezcla</legend>
+          <label class="field">
+            <span>Tono</span>
+            <input type="range" name="toneLevel" step="1" data-scale="0.01" />
+            <output data-for="toneLevel"></output>
+          </label>
+          <label class="field">
+            <span>Lluvia</span>
+            <input type="range" name="rainLevel" step="1" data-scale="0.01" />
+            <output data-for="rainLevel"></output>
+          </label>
+          <div class="field">
+            <label for="rainSeed">Semilla lluvia</label>
+            <div class="inline">
+              <input type="number" id="rainSeed" name="rainSeed" step="1" inputmode="numeric" data-lock />
+              <button type="button" id="btn-seed" class="btn btn--small" data-lock>Nueva</button>
+            </div>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Modulación de amplitud <small>(se aplica a toda la mezcla)</small></legend>
           <label class="field field--toggle">
             <input type="checkbox" name="modulationOn" />
             <span>Modulación activa <small>(desactívala para comparar A/B)</small></span>

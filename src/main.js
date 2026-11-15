@@ -31,6 +31,9 @@ const btnStop = $('#btn-stop');
 btnStart.addEventListener('click', () => session.start());
 btnPause.addEventListener('click', () => (session.state === 'paused' ? session.resume() : session.pause()));
 btnStop.addEventListener('click', () => session.stop());
+$('#btn-seed').addEventListener('click', () => {
+  controls.write(session.update({ rainSeed: 1 + Math.floor(Math.random() * 999999) }));
+});
 
 // ---- Lectura de mediciones ---------------------------------------------------
 const readout = {
@@ -48,7 +51,10 @@ function showMeasurement(m) {
   }
   readout.mod.textContent =
     m.depth < 0.02 ? 'sin modulación detectable' : `${m.frequency.toFixed(2)} Hz · ${Math.round(m.depth * 100)} %`;
-  readout.carrier.textContent = `${m.carrierHz.toFixed(1)} Hz`;
+  // Con lluvia en la mezcla los cruces por cero ya no reflejan la portadora.
+  const p = session.params;
+  readout.carrier.textContent =
+    p.toneLevel > 0 && p.rainLevel === 0 ? `${m.carrierHz.toFixed(1)} Hz` : 'n/d (mezcla)';
   readout.peak.textContent = `${toDbfs(m.peak).toFixed(1)} dBFS`;
   readout.clip.textContent = m.clipped > 0 ? `SÍ (${m.clipped} muestras)` : 'no';
   readout.clip.dataset.alert = String(m.clipped > 0);

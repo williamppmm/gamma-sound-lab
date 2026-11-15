@@ -31,6 +31,10 @@ describe('sanitizeParams', () => {
     expect(p.modulationOn).toBe(base.modulationOn);
   });
 
+  it('redondea parámetros enteros (semilla)', () => {
+    expect(sanitizeParams({ rainSeed: 12.7 }).rainSeed).toBe(13);
+  });
+
   it('acepta números como texto', () => {
     expect(sanitizeParams({ modRateHz: '40.5' }).modRateHz).toBe(40.5);
   });
