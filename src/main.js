@@ -10,6 +10,7 @@ import { PresetPanel } from './ui/PresetPanel.js';
 import { ExportPanel } from './ui/ExportPanel.js';
 import { renderExport, toWavBlob } from './export/AudioExporter.js';
 import { registerServiceWorker } from './pwa/register.js';
+import { ImmersiveView } from './ui/ImmersiveView.js';
 import { PresetManager } from './presets/PresetManager.js';
 import { openDatabase, PresetStore } from './storage/Database.js';
 import { defaultParams } from './utils/validators.js';
@@ -72,6 +73,14 @@ async function initPresets() {
   presetPanel.lock(session.state !== 'idle');
 }
 initPresets();
+
+// ---- Vista inmersiva (visual ambiental + luz modulada experimental) ----------------
+const immersive = new ImmersiveView($('#immersive'), {
+  session,
+  getAnalyser: () => engine.visualAnalyser,
+  consentDialog: $('#light-consent'),
+});
+$('#btn-immersive').addEventListener('click', () => immersive.open());
 
 // ---- PWA: uso sin conexión y aviso de actualización ------------------------------
 registerServiceWorker({

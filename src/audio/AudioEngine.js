@@ -12,6 +12,12 @@ export class AudioEngine {
   #master = null;
   #fade = null;
   #analyser = null;
+  #visual = null;
+
+  /** Analizador pequeño para los visuales (o null si el contexto aún no existe). */
+  get visualAnalyser() {
+    return this.#visual;
+  }
 
   get context() {
     return this.#ctx;
@@ -39,6 +45,7 @@ export class AudioEngine {
     this.#master = chain.master;
     this.#fade = chain.fade;
     this.#analyser = chain.analyser;
+    this.#visual = chain.visual;
     this.#ctx = ctx;
   }
 
@@ -62,7 +69,7 @@ export class AudioEngine {
 
   async close() {
     const ctx = this.#ctx;
-    this.#ctx = this.#master = this.#fade = this.#analyser = null;
+    this.#ctx = this.#master = this.#fade = this.#analyser = this.#visual = null;
     if (ctx && ctx.state !== 'closed') await ctx.close();
   }
 }

@@ -35,3 +35,7 @@ o sensibilidad a estímulos rítmicos deben consultar a un profesional antes de 
 ## Presets
 - Los presets importados pasan por la misma validación que la interfaz: un JSON manipulado no
   puede superar el techo de volumen, la duración máxima ni los rangos de frecuencia.
+
+## Estimulación visual
+La vista inmersiva incluye una luz modulada experimental con riesgo de crisis en personas
+fotosensibles. Sus salvaguardas y límites están en [estimulacion-visual.md](estimulacion-visual.md).

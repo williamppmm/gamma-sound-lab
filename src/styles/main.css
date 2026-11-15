@@ -369,3 +369,120 @@ label.btn[aria-disabled] {
 .export__report[data-ok='false'] {
   color: var(--warn);
 }
+
+/* ---- Vista inmersiva y luz modulada ---- */
+.immersive {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: #040508;
+  display: grid;
+  grid-template-rows: 1fr auto auto;
+}
+.immersive[hidden] {
+  display: none;
+}
+.immersive__ambient {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.immersive__lamp-backdrop {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  /* Fondo fijo: la luminancia de la lámpara se calcula sobre este color (LIGHT.background). */
+  background: rgb(8, 10, 14);
+  display: grid;
+  place-items: center;
+}
+.immersive__lamp-backdrop[hidden] {
+  display: none;
+}
+.immersive__lamp {
+  border-radius: 50%;
+  opacity: 0;
+  background: radial-gradient(circle, rgb(223, 243, 238) 0 55%, rgba(223, 243, 238, 0) 72%);
+}
+.immersive__bar {
+  grid-row: 2;
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(13, 16, 21, 0.85);
+  border-top: 1px solid var(--border);
+}
+.immersive__title {
+  font-weight: 600;
+}
+.immersive__session {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  margin-right: auto;
+}
+.immersive__depth {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.immersive__depth input {
+  width: 120px;
+  accent-color: var(--accent);
+}
+.immersive__status {
+  grid-row: 3;
+  position: relative;
+  margin: 0;
+  padding: 0 16px 12px;
+  background: rgba(13, 16, 21, 0.85);
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.immersive__status[data-error='true'] {
+  color: var(--warn);
+}
+.consent {
+  max-width: 560px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  padding: 20px;
+}
+.consent::backdrop {
+  background: rgba(0, 0, 0, 0.7);
+}
+.consent h2 {
+  margin: 0 0 8px;
+  font-size: 1.1rem;
+  color: var(--warn);
+}
+.consent p {
+  font-size: 0.9rem;
+}
+.consent__check {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 10px 0;
+  font-size: 0.9rem;
+}
+.consent__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+@media (max-width: 520px) {
+  .buttons {
+    flex-wrap: wrap;
+  }
+}

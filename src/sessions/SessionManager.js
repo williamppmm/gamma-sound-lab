@@ -30,6 +30,7 @@ export class SessionManager extends EventTarget {
   #generation = 0;
   #createVoice;
   #starting = null;
+  #voiceStart = 0;
 
   /**
    * @param engine  AudioEngine (o un doble de pruebas con la misma interfaz)
@@ -64,6 +65,14 @@ export class SessionManager extends EventTarget {
   /** Información de la fuente activa (p. ej. duración del bucle de Bruma), o null. */
   get voiceInfo() {
     return this.#voice?.info ?? null;
+  }
+  /**
+   * Reloj de la modulación: el LFO arranca con fase 0 en `startTime` (tiempo del AudioContext).
+   * Lo usa la luz modulada para ir en fase con el sonido. null si no hay voz activa.
+   */
+  get modulationClock() {
+    const ctx = this.#engine.context;
+    return this.#voice && ctx ? { context: ctx, startTime: this.#voiceStart } : null;
   }
 
   /** Cambia parámetros en caliente. Los marcados sessionLocked quedan fijos durante la sesión. */
@@ -171,6 +180,7 @@ export class SessionManager extends EventTarget {
     if (p !== initial) this.#voice.set(p, ctx.currentTime);
     this.#voice.connect(this.#engine.input);
     this.#voice.start(t0);
+    this.#voiceStart = t0;
 
     this.#endTime = t0 + p.durationMin * 60;
     this.#scheduleEnvelope(p.fadeSec, t0);

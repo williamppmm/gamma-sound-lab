@@ -41,6 +41,7 @@
           <button id="btn-start" type="button" class="btn btn--primary">Iniciar</button>
           <button id="btn-pause" type="button" class="btn" disabled>Pausar</button>
           <button id="btn-stop" type="button" class="btn btn--danger" disabled>Detener</button>
+          <button id="btn-immersive" type="button" class="btn">Vista inmersiva</button>
         </div>
       </section>
 
@@ -244,6 +245,55 @@
         </p>
         <ul id="export-report" class="export__report" hidden></ul>
       </section>
+
+      <div id="immersive" class="immersive" role="dialog" aria-modal="true" aria-label="Vista inmersiva" hidden>
+        <canvas class="immersive__ambient" aria-hidden="true"></canvas>
+        <div class="immersive__lamp-backdrop" hidden>
+          <div class="immersive__lamp" aria-hidden="true"></div>
+        </div>
+        <div class="immersive__bar">
+          <span class="immersive__title">Vista inmersiva</span>
+          <span id="immersive-session" class="immersive__session"></span>
+          <label class="immersive__depth">
+            <span>Profundidad de la luz</span>
+            <input type="range" id="light-depth" step="1" />
+            <output id="light-depth-out"></output>
+          </label>
+          <button id="btn-light" type="button" class="btn btn--small">Luz modulada (experimental)…</button>
+          <button id="btn-immersive-close" type="button" class="btn btn--small">Cerrar</button>
+        </div>
+        <p id="light-status" class="immersive__status" role="status" aria-live="polite"></p>
+      </div>
+
+      <dialog id="light-consent" class="consent" aria-labelledby="consent-title">
+        <form method="dialog">
+          <h2 id="consent-title">Luz modulada · experimental</h2>
+          <p>
+            <strong>No la uses si tienes epilepsia, antecedentes de convulsiones o sensibilidad a luces
+            parpadeantes</strong>, ni si alguien que te acompaña podría tenerla. La fotosensibilidad puede no
+            estar diagnosticada. Tampoco la uses con migraña activa.
+          </p>
+          <p>
+            Para reducir el riesgo, la luz varía poco de brillo (por debajo del umbral de destello de las pautas
+            WCAG), ocupa como máximo el 10 % de la pantalla, solo funciona entre 35 y 60 Hz y en pantallas
+            compatibles, y se detiene con cualquier tecla, clic o toque. Esto <strong>reduce el riesgo pero no lo
+            elimina</strong>. Es un estímulo más suave que el de los estudios de laboratorio y no tiene eficacia
+            demostrada.
+          </p>
+          <label class="consent__check">
+            <input type="checkbox" required />
+            <span>No tengo epilepsia, antecedentes de convulsiones ni sensibilidad conocida a luces parpadeantes.</span>
+          </label>
+          <label class="consent__check">
+            <input type="checkbox" required />
+            <span>Entiendo que debo detenerla ante cualquier molestia (mareo, dolor de cabeza, visión alterada).</span>
+          </label>
+          <div class="consent__actions">
+            <button type="submit" value="cancel" formnovalidate class="btn btn--small">Cancelar</button>
+            <button type="submit" value="accept" class="btn btn--small btn--primary">Activar la luz</button>
+          </div>
+        </form>
+      </dialog>
 
       <footer class="app__footer">Procesamiento 100 % local. No se envía audio ni datos.</footer>
     </main>

@@ -37,6 +37,15 @@ instalado en el sistema; no descargan navegadores.
   batidos entre notas producen lecturas falsas, y la app lo indica en lugar de inventar cifras.
 - Osciloscopio, pico y clipping.
 
+## Vista inmersiva
+
+- **Campo de luz ambiental**: respira con la música (brillo y color), sin destellos.
+- **Luz modulada (experimental, desactivada por defecto)**: una lámpara que varía de brillo en fase
+  con la modulación del sonido. Solo entre 35 y 60 Hz, en pantallas de ≥ 120 Hz, por debajo del
+  umbral de destello de WCAG, en ≤ 10 % de la pantalla, con consentimiento en cada activación y
+  apagado con cualquier tecla o toque. **No la uses si tienes epilepsia o sensibilidad a luces
+  parpadeantes.** Detalle en [docs/estimulacion-visual.md](docs/estimulacion-visual.md).
+
 ## Sesiones, presets y exportación
 
 - Duración obligatoria, fundidos, pausa/reanudación y parada automática.
@@ -64,10 +73,11 @@ src/
   storage/    IndexedDB
   export/     render offline, verificación y codificación WAV
   pwa/        service worker (generado en el build) y registro
-  ui/         Controls, Visualizer, PresetPanel, ExportPanel
+  visual/     campo ambiental y luz modulada (funciones puras con las salvaguardas)
+  ui/         Controls, Visualizer, PresetPanel, ExportPanel, ImmersiveView
 tests/        Vitest (Node) · tests/e2e: Playwright (Chrome)
 scripts/      generación de iconos
-docs/         arquitectura, roadmap, decisiones técnicas, seguridad auditiva, evaluación de Tauri
+docs/         arquitectura, roadmap, decisiones técnicas, seguridad auditiva, estimulación visual, Tauri
 ```
 
 Documentación: [arquitectura](docs/arquitectura.md) · [roadmap](docs/roadmap.md) ·

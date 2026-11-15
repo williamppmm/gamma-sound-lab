@@ -204,3 +204,17 @@ La sonda verifica la automatización (LFO, profundidad, A/B), no la multiplicaci
 - `npm run test:e2e`: Playwright con el Chrome instalado (sin descargar navegadores), sobre el build
   de producción: reproducción en vivo con la sonda, exportación de las tres fuentes, presets
   persistentes y funcionamiento sin conexión.
+
+## 17. Estimulación visual
+- Vista inmersiva con dos niveles; detalle de riesgos y salvaguardas en
+  [estimulacion-visual.md](estimulacion-visual.md).
+- Nivel 1 (campo ambiental): brillo filtrado y con velocidad limitada; probado sin destellos ante
+  entradas adversas con una implementación de la medida de destellos de WCAG (`maxFlashesPerSecond`).
+  Las pruebas encontraron dos defectos antes de publicar: el contador de destellos no registraba la
+  primera oscilación (habría dado por seguro cualquier parpadeo) y el color perdía luminancia al
+  recortar canales en tonos azules.
+- Nivel 2 (luz modulada): por debajo del umbral de destello de WCAG, ≤ 10 % del área, 35–60 Hz,
+  pantalla ≥ 3 fotogramas por ciclo con fotogramas estables, vigilancia de fotogramas perdidos,
+  consentimiento en cada activación, parada con cualquier interacción, 10 min máximo.
+- No forma parte de `PARAM_SPEC`: no se guarda en presets ni se puede activar desde un JSON.
+- Un analizador pequeño (2048) en la cadena de salida alimenta los visuales sin cargar el grande.

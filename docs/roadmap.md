@@ -11,6 +11,7 @@ Estado a 15 de noviembre de 2026. Detalle de cada decisión en [decisiones-tecni
 | 4 · Presets | ✅ | IndexedDB, esquema versionado con migraciones, presets incluidos, exportar/importar JSON |
 | 5 · Exportación y pruebas | ✅ | WAV 16/32 bits con `OfflineAudioContext`, verificación automática, E2E en Chrome |
 | 6 · Escalabilidad | ✅ / evaluado | PWA instalable y sin conexión · Tauri evaluado ([escritorio-tauri.md](escritorio-tauri.md)) |
+| 7 · Estimulación visual | ✅ | Vista inmersiva: campo ambiental sin destellos y luz modulada experimental con salvaguardas ([estimulacion-visual.md](estimulacion-visual.md)) |
 
 ## Pendiente fuera del plan original
 

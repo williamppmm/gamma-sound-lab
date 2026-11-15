@@ -18,6 +18,9 @@ export function buildOutputChain(ctx) {
   const limiter = new DynamicsCompressorNode(ctx, LIMITER);
   const trim = new GainNode(ctx, { gain: 10 ** (-compressorMakeupDb(LIMITER) / 20) });
   const analyser = new AnalyserNode(ctx, { fftSize: ANALYSER_FFT_SIZE, smoothingTimeConstant: 0 });
+  // Analizador pequeño para los visuales (se lee en cada fotograma; no va al destino).
+  const visual = new AnalyserNode(ctx, { fftSize: 2048, smoothingTimeConstant: 0.5 });
   master.connect(fade).connect(limiter).connect(trim).connect(analyser).connect(ctx.destination);
-  return { input: master, master, fade, limiter, trim, analyser };
+  trim.connect(visual);
+  return { input: master, master, fade, limiter, trim, analyser, visual };
 }
