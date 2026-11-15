@@ -123,3 +123,7 @@ mezclador. El ajuste inicial es 40 Hz con una profundidad del 20 %.
 La pieza pasa por el mismo volumen maestro, fundidos, limitador y osciloscopio. El panel muestra
 el ajuste del modulador de acordes y el pico de salida medido. El estimador de tono y portadora
 se reserva para Tono y lluvia. Detener durante la preparación cancela la carga.
+
+OpenAI Codex generó la composición y la síntesis de Bruma de cristal para Gamma Sound Lab.
+Las dos pistas FLAC se ofrecen bajo **CC0 1.0**. La [nota de procedencia y licencia](../src/assets/LICENSE-ASSETS.md)
+detalla el alcance y las etiquetas de los archivos.

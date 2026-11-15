@@ -28,6 +28,8 @@ Requiere Node.js 22.12+ o 24+ (lo exige Vitest 5) y un navegador Chromium.
 - Sesiones con duración obligatoria, fundidos, pausa/reanudación y parada automática
 - Osciloscopio, pico y clipping en ambas fuentes. En Tono y lluvia se muestran las estimaciones
   cuando la señal permite medirlas. En Bruma se muestra el ajuste de modulación de los acordes.
+- La composición y la síntesis de Bruma de cristal se generaron con OpenAI Codex para Gamma Sound
+  Lab. Las dos pistas FLAC se ofrecen bajo [CC0 1.0](src/assets/LICENSE-ASSETS.md).
 
 ## Estructura
 
