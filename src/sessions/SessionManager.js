@@ -1,5 +1,6 @@
+import { BrumaVoice } from '../audio/BrumaVoice.js';
 import { outputGain } from '../audio/dsp.js';
-import { PAUSE_FADE_SEC, STOP_FADE_SEC } from '../audio/limits.js';
+import { PAUSE_FADE_SEC, SESSION_LOCKED_KEYS, STOP_FADE_SEC } from '../audio/limits.js';
 import { holdAt } from '../audio/params.js';
 import { SessionVoice } from '../audio/SessionVoice.js';
 import { sanitizeParams } from '../utils/validators.js';
@@ -7,6 +8,9 @@ import { sanitizeParams } from '../utils/validators.js';
 const START_DELAY_SEC = 0.05;
 const TICK_MS = 250;
 const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const createSessionVoice = (ctx, params, signal) => params.source === 'bruma'
+  ? BrumaVoice.load(ctx, params, signal)
+  : new SessionVoice(ctx, params);
 
 /**
  * Controlador entre la UI y el motor. Garantiza:
@@ -16,7 +20,7 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
  *  - parada automática al cumplirse la duración,
  *  - parámetros siempre validados.
  *
- * Estados: idle → playing ⇄ paused → stopping → idle
+ * Estados: idle → starting → playing ⇄ paused → stopping → idle
  * Emite 'change' (detail: { state, remainingSec, params, reason }) y 'error'.
  */
 export class SessionManager extends EventTarget {
@@ -29,13 +33,14 @@ export class SessionManager extends EventTarget {
   #queueTail = Promise.resolve();
   #generation = 0;
   #createVoice;
+  #starting = null;
 
   /**
    * @param engine  AudioEngine (o un doble de pruebas con la misma interfaz)
    * @param params  parámetros iniciales
-   * @param options.createVoice  fábrica (ctx, params) → voz; permite probar sin Web Audio
+   * @param options.createVoice  fábrica (ctx, params, signal) → voz o promesa de voz
    */
-  constructor(engine, params, { createVoice = (ctx, p) => new SessionVoice(ctx, p) } = {}) {
+  constructor(engine, params, { createVoice = createSessionVoice } = {}) {
     super();
     this.#engine = engine;
     this.#params = sanitizeParams(params);
@@ -50,19 +55,20 @@ export class SessionManager extends EventTarget {
   }
   get remainingSec() {
     const ctx = this.#engine.context;
-    if (this.#state === 'idle' || !ctx) return this.#params.durationMin * 60;
+    if (this.#state === 'idle' || this.#state === 'starting' || !ctx) return this.#params.durationMin * 60;
     return Math.max(0, this.#endTime - ctx.currentTime);
   }
   snapshot() {
     return { state: this.#state, remainingSec: this.remainingSec, params: this.#params };
   }
 
-  /** Cambia parámetros en caliente. Duración y fundido quedan fijos durante la sesión. */
+  /** Cambia parámetros en caliente. Los marcados sessionLocked quedan fijos durante la sesión. */
   update(partial) {
     const prev = this.#params;
     let next = sanitizeParams(partial, prev);
     if (this.#state !== 'idle') {
-      next = Object.freeze({ ...next, durationMin: prev.durationMin, fadeSec: prev.fadeSec });
+      const locked = Object.fromEntries(SESSION_LOCKED_KEYS.map((k) => [k, prev[k]]));
+      next = Object.freeze({ ...next, ...locked });
     }
     this.#params = next;
     const ctx = this.#engine.context;
@@ -75,7 +81,12 @@ export class SessionManager extends EventTarget {
   }
 
   start() {
-    return this.#enqueue((gen) => this.#start(gen));
+    if (this.#state !== 'idle' || this.#starting) return Promise.resolve();
+    const controller = new AbortController();
+    this.#starting = controller;
+    return this.#enqueue((gen) => this.#start(gen, controller.signal)).finally(() => {
+      if (this.#starting === controller) this.#starting = null;
+    });
   }
   pause() {
     return this.#enqueue((gen) => this.#pause(gen));
@@ -84,6 +95,7 @@ export class SessionManager extends EventTarget {
     return this.#enqueue((gen) => this.#resume(gen));
   }
   stop() {
+    this.#starting?.abort();
     return this.#enqueue((gen) => this.#stopGracefully(gen));
   }
 
@@ -94,6 +106,8 @@ export class SessionManager extends EventTarget {
    */
   panic() {
     this.#generation++;
+    this.#starting?.abort();
+    this.#starting = null;
     clearInterval(this.#ticker);
     this.#voice?.dispose();
     this.#voice = null;
@@ -120,11 +134,27 @@ export class SessionManager extends EventTarget {
     return gen === this.#generation;
   }
 
-  async #start(gen) {
-    if (this.#state !== 'idle') await this.#halt('restart');
-    if (!this.#isCurrent(gen)) return;
-    await this.#engine.ensureRunning();
-    if (!this.#isCurrent(gen)) return;
+  async #start(gen, signal) {
+    if (signal.aborted) return;
+    this.#setState('starting');
+
+    const initial = this.#params;
+    try {
+      await this.#engine.ensureRunning();
+      if (!this.#isCurrent(gen)) return;
+      signal.throwIfAborted();
+      const voice = await this.#createVoice(this.#engine.context, initial, signal);
+      if (!this.#isCurrent(gen) || signal.aborted) {
+        voice.dispose();
+        signal.throwIfAborted();
+        return;
+      }
+      this.#voice = voice;
+    } catch (err) {
+      if (!this.#isCurrent(gen)) return;
+      if (signal.aborted) return this.#halt('stopped');
+      throw err;
+    }
 
     const ctx = this.#engine.context;
     const p = this.#params;
@@ -134,7 +164,7 @@ export class SessionManager extends EventTarget {
     fade.setValueAtTime(0, ctx.currentTime);
     this.#engine.setMasterGain(outputGain(p.volume), 0);
 
-    this.#voice = this.#createVoice(ctx, p);
+    if (p !== initial) this.#voice.set(p, ctx.currentTime);
     this.#voice.connect(this.#engine.input);
     this.#voice.start(t0);
 
@@ -155,6 +185,7 @@ export class SessionManager extends EventTarget {
     // La sesión pudo terminar o cerrarse durante el fundido.
     if (!this.#isCurrent(gen) || this.#state !== 'playing') return;
     await this.#engine.suspend(); // congela ctx.currentTime → el temporizador también se pausa
+    if (!this.#isCurrent(gen)) return; // panic() durante la suspensión
     this.#endTime += PAUSE_FADE_SEC;
     this.#setState('paused');
   }
@@ -173,9 +204,11 @@ export class SessionManager extends EventTarget {
     this.#setState('stopping');
     const g = this.#engine.fadeGain;
     const now = this.#engine.context.currentTime;
+    // Nunca más allá del final programado: si quedan menos de STOP_FADE_SEC, se acorta el fundido.
+    const end = Math.max(now, Math.min(now + STOP_FADE_SEC, this.#endTime));
     holdAt(g, now);
-    g.linearRampToValueAtTime(0, now + STOP_FADE_SEC);
-    await wait(STOP_FADE_SEC * 1000 + 50);
+    g.linearRampToValueAtTime(0, end);
+    await wait((end - now) * 1000 + 50);
     if (!this.#isCurrent(gen)) return;
     await this.#halt('stopped');
   }
@@ -241,6 +274,18 @@ export class SessionManager extends EventTarget {
       /* ignorar */
     }
     this.#voice = null;
+    // Silenciar y suspender el contexto, si llegó a crearse: no dejar el dispositivo activo.
+    const ctx = this.#engine.context;
+    if (ctx) {
+      try {
+        const g = this.#engine.fadeGain;
+        g.cancelScheduledValues(0);
+        g.setValueAtTime(0, ctx.currentTime);
+      } catch {
+        /* ignorar */
+      }
+      Promise.resolve(this.#engine.suspend()).catch(() => {});
+    }
     this.#setState('idle', 'error');
     this.dispatchEvent(new CustomEvent('error', { detail: err }));
   }

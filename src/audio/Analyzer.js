@@ -19,14 +19,16 @@ export class SignalAnalyzer {
     return this.#buf;
   }
 
-  measure() {
+  measure({ estimateTone = true } = {}) {
     const x = this.read();
     const sr = this.#node.context.sampleRate;
+    const peak = peakAbs(x);
+    const levels = { peak, clipped: countClipped(x) };
+    if (!estimateTone) return { ...levels, silent: peak < 1e-6 };
     return {
+      ...levels,
       ...estimateModulation(x, sr),
       carrierHz: estimateCarrierHz(x, sr),
-      peak: peakAbs(x),
-      clipped: countClipped(x),
     };
   }
 }

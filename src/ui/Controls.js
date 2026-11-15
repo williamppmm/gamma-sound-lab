@@ -6,6 +6,9 @@ const FORMAT = {
   modRateHz: (v) => `${v.toFixed(1)} Hz`,
   depth: (v) => `${Math.round(v * 100)} %`,
   toneLevel: (v) => `${Math.round(v * 100)} %`,
+  melodyLevel: (v) => `${Math.round(v * 100)} %`,
+  chordsLevel: (v) => `${Math.round(v * 100)} %`,
+  brumaDepth: (v) => `${Math.round(v * 100)} %`,
   rainLevel: (v) => `${Math.round(v * 100)} %`,
   volume: (v) => (v === 0 ? '0 %' : `${Math.round(v * 100)} % · ${toDbfs(outputGain(v)).toFixed(0)} dBFS`),
 };
@@ -72,6 +75,12 @@ export class Controls {
       else if (typeof v === 'number') el.value = String(+(v / scaleOf(el)).toFixed(4));
       else el.value = v;
       this.#writeOutput(el.name, v);
+    }
+  }
+
+  showSource(source) {
+    for (const el of this.#form.querySelectorAll('[data-source]')) {
+      el.hidden = el.dataset.source !== source;
     }
   }
 

@@ -6,19 +6,34 @@ import { MAX_MASTER_GAIN } from './limits.js';
 // Ganancia AM: g(t) = (1 - d/2) + (d/2)·sin(2π·fm·t)  →  oscila entre 1-d y 1.
 // El motor implementa exactamente esto con un GainNode (base) + LFO (amplitud).
 
-export const effectiveDepth = ({ depth, modulationOn }) => (modulationOn ? depth : 0);
 export const amBaseGain = (depth) => 1 - depth / 2;
 export const amLfoGain = (depth) => depth / 2;
 export const outputGain = (volume) => Math.min(Math.max(volume, 0), 1) * MAX_MASTER_GAIN;
 
+/** RMS de la ganancia AM g(t) con profundidad d: √((1 − d/2)² + (d/2)²/2). */
+export const amRms = (depth) => Math.sqrt(amBaseGain(depth) ** 2 + amLfoGain(depth) ** 2 / 2);
+
 /**
- * Ganancia de salida del mezclador: si la suma de niveles supera 1 se reduce
- * proporcionalmente. Como cada fuente tiene pico ≤ 1, la mezcla nunca pasa de 1.
+ * Ganancias del modulador. Con la modulación desactivada (lado B del A/B) y
+ * abMatchLoudness, la ganancia fija es el RMS de la versión modulada, para que
+ * A y B solo difieran en la modulación y no en sonoridad. Siempre ≤ 1: no sube el pico.
  */
-export const mixNormalization = (levels) => {
-  const sum = levels.reduce((a, b) => a + b, 0);
-  return sum > 1 ? 1 / sum : 1;
-};
+export function amGains({ depth, modulationOn, abMatchLoudness }) {
+  if (modulationOn) return { base: amBaseGain(depth), lfo: amLfoGain(depth) };
+  return { base: abMatchLoudness ? amRms(depth) : 1, lfo: 0 };
+}
+
+/**
+ * Ganancia de cada canal del mezclador: nivel / max(1, suma de niveles).
+ * Como cada fuente tiene pico ≤ 1, la mezcla nunca pasa de 1. Se aplica por canal
+ * (y no como un nodo de normalización aparte) para que, al suavizar los cambios,
+ * la suma interpolada tampoco pueda superar 1 en ningún instante.
+ */
+export function channelGains(levels) {
+  const total = Object.values(levels).reduce((a, b) => a + b, 0);
+  const k = total > 1 ? 1 / total : 1;
+  return Object.fromEntries(Object.entries(levels).map(([name, level]) => [name, level * k]));
+}
 
 const WAVES = {
   sine: (ph) => Math.sin(ph),
@@ -30,9 +45,7 @@ export function renderAmTone(params, sampleRate, seconds) {
   const n = Math.round(sampleRate * seconds);
   const out = new Float32Array(n);
   const wave = WAVES[params.waveform] ?? WAVES.sine;
-  const d = effectiveDepth(params);
-  const base = amBaseGain(d);
-  const lfo = amLfoGain(d);
+  const { base, lfo } = amGains(params);
   const g = outputGain(params.volume);
   const wc = (2 * Math.PI * params.carrierHz) / sampleRate;
   const wm = (2 * Math.PI * params.modRateHz) / sampleRate;
@@ -134,10 +147,29 @@ function cicGain(f, d, sampleRate) {
  * filtro CIC hasta ~8·maxHz (48 kHz → 800 Hz, factor 60) antes de buscar con
  * Goertzel. Se compensa la caída del CIC y se usa ventana de Hann para tolerar
  * ventanas sin ciclos enteros. Con 32768 muestras: ~25 ms → < 1 ms.
+ *
+ * Fiabilidad: el máximo del espectro siempre existe, haya modulación o no. Por eso
+ * la lectura solo se declara válida (status 'ok') si:
+ *  - la energía es estable en la ventana (sin fundidos ni cambios bruscos): drift,
+ *  - el pico destaca del fondo espectral: contrast = pico / mediana fuera del lóbulo,
+ *  - la profundidad supera un mínimo, y
+ *  - caben al menos MOD_DETECTION.minCycles ciclos en la ventana.
+ * status: 'ok' | 'silent' | 'unstable' | 'none' | 'short'
  */
 export function estimateModulation(x, sampleRate, { minHz = 1, maxHz = 100, stepHz = 0.25 } = {}) {
   const n = x.length;
-  if (n < 16) return { frequency: 0, depth: 0, silent: true };
+  const windowSec = n / sampleRate;
+  const result = (status, extra = {}) => ({
+    frequency: 0,
+    depth: 0,
+    contrast: 0,
+    drift: 0,
+    ...extra,
+    status,
+    silent: status === 'silent',
+    windowSec,
+  });
+  if (n < 16) return result('silent');
 
   const sq = new Float64Array(n);
   for (let i = 0; i < n; i++) sq[i] = x[i] * x[i];
@@ -158,25 +190,100 @@ export function estimateModulation(x, sampleRate, { minHz = 1, maxHz = 100, step
     acc += wi * z[i];
   }
   const dc = acc / sumW;
-  if (dc < 1e-12) return { frequency: 0, depth: 0, silent: true };
+  if (dc < 1e-12) return result('silent');
 
   const y = new Float64Array(m);
   for (let i = 0; i < m; i++) y[i] = w[i] * (z[i] - dc);
 
-  let bestF = minHz;
-  let bestMag = -1;
+  const magAt = (f) => goertzelMagnitude(y, fs, f) / cicGain(f, d, sampleRate);
+  const freqs = [];
+  const mags = [];
+  let bi = 0;
   for (let f = minHz; f <= maxHz + 1e-9; f += stepHz) {
-    const mag = goertzelMagnitude(y, fs, f) / cicGain(f, d, sampleRate);
-    if (mag > bestMag) {
-      bestMag = mag;
-      bestF = f;
+    freqs.push(f);
+    mags.push(magAt(f));
+    if (mags[mags.length - 1] > mags[bi]) bi = mags.length - 1;
+  }
+
+  // Refinado parabólico del pico entre puntos de la rejilla.
+  let frequency = freqs[bi];
+  let peak = mags[bi];
+  if (bi > 0 && bi < mags.length - 1) {
+    const [a, b, c] = [mags[bi - 1], mags[bi], mags[bi + 1]];
+    const den = a - 2 * b + c;
+    if (den < 0) {
+      const f = freqs[bi] + ((0.5 * (a - c)) / den) * stepHz;
+      const mag = magAt(f);
+      if (mag >= peak) [frequency, peak] = [f, mag];
     }
   }
 
-  const r = (2 * bestMag) / sumW / dc;
+  // Contraste: pico frente a la mediana del espectro fuera del lóbulo principal (Hann: ±2/T).
+  const lobeHz = 3 / windowSec;
+  const floor = median(mags.filter((_, i) => Math.abs(freqs[i] - frequency) > lobeHz));
+  const contrast = floor > 0 ? peak / floor : Infinity;
+
+  const r = (2 * peak) / sumW / dc;
   const k = r < 1e-9 ? 0 : (2 - Math.sqrt(Math.max(0, 4 - 2 * r * r))) / r;
   const depth = Math.min(1, (2 * k) / (1 + k));
-  return { frequency: bestF, depth, silent: false };
+  const drift = residualDrift(z, y, sumW, (2 * Math.PI * frequency) / fs);
+
+  // Orden: primero "¿hay modulación clara?" (la lluvia tiene deriva propia y no debe
+  // aparecer como transición), después estabilidad, y por último ciclos suficientes.
+  const measured = { frequency, depth, contrast, drift };
+  const D = MOD_DETECTION;
+  if (contrast < D.minContrast || depth < D.minDepth) return result('none', measured);
+  if (drift > D.maxDrift) return result('unstable', measured);
+  if (frequency * windowSec < D.minCycles) return result('short', measured);
+  return result('ok', measured);
+}
+
+/**
+ * Deriva de la energía en la ventana: pendiente por mínimos cuadrados de z, relativa
+ * a su media, tras restar la componente senoidal detectada (así una modulación lenta
+ * con un ciclo incompleto no se confunde con un fundido).
+ */
+function residualDrift(z, y, sumW, omega) {
+  const m = z.length;
+  let xr = 0;
+  let xi = 0;
+  for (let i = 0; i < m; i++) {
+    xr += y[i] * Math.cos(omega * i);
+    xi -= y[i] * Math.sin(omega * i);
+  }
+  const ar = (2 / sumW) * xr;
+  const ai = (2 / sumW) * xi;
+  let mean = 0;
+  const res = new Float64Array(m);
+  for (let i = 0; i < m; i++) {
+    res[i] = z[i] - (ar * Math.cos(omega * i) - ai * Math.sin(omega * i));
+    mean += res[i];
+  }
+  mean /= m;
+  if (mean <= 1e-12) return 0;
+  let sxy = 0;
+  let sxx = 0;
+  const ic = (m - 1) / 2;
+  for (let i = 0; i < m; i++) {
+    sxy += (i - ic) * (res[i] - mean);
+    sxx += (i - ic) ** 2;
+  }
+  return Math.abs((sxy / sxx) * (m - 1)) / mean;
+}
+
+/** Umbrales de validez de la medición AM (calibrados con tono, lluvia, mezclas y fundidos a 48 y 96 kHz). */
+export const MOD_DETECTION = Object.freeze({
+  minContrast: 8,
+  minDepth: 0.03,
+  maxDrift: 0.2,
+  minCycles: 3,
+});
+
+function median(values) {
+  if (values.length === 0) return 0;
+  const s = Float64Array.from(values).sort();
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
 }
 
 /** Frecuencia de la portadora por cruces ascendentes por cero (interpolados). */

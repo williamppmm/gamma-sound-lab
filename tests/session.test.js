@@ -41,12 +41,71 @@ describe('inicio', () => {
     expect(engine.fadeNow()).toBeCloseTo(1, 6);
   });
 
-  it('doble clic en Iniciar nunca deja dos voces sonando', async () => {
-    const a = session.start();
-    const b = session.start();
-    await Promise.all([a, b]);
-    expect(factory.live()).toBe(1);
+  it('Iniciar es idempotente: dos peticiones seguidas crean y arrancan una sola voz', async () => {
+    await Promise.all([session.start(), session.start()]);
+    expect(factory.voices).toHaveLength(1);
+    expect(factory.voices[0].start).toHaveBeenCalledOnce();
     expect(session.state).toBe('playing');
+  });
+
+  it('Iniciar durante una sesión (o en pausa) no la reinicia', async () => {
+    await session.start();
+    await advance(engine, 5);
+    const remaining = session.remainingSec;
+    await session.start();
+    expect(factory.voices).toHaveLength(1);
+    expect(session.remainingSec).toBeCloseTo(remaining, 6);
+    session.pause();
+    await advance(engine, 0.5);
+    await session.start();
+    expect(session.state).toBe('paused');
+    expect(factory.voices).toHaveLength(1);
+  });
+
+  it('carga Bruma antes de programar el audio y mantiene la fuente seleccionada', async () => {
+    const loaded = Promise.withResolvers();
+    const loading = Promise.withResolvers();
+    const createVoice = vi.fn((_ctx, params) => {
+      loading.resolve(params);
+      return loaded.promise;
+    });
+    session = new SessionManager(engine, { ...PARAMS, source: 'bruma' }, { createVoice });
+
+    const start = session.start();
+    expect(await loading.promise).toMatchObject({ source: 'bruma', modRateHz: 40, brumaDepth: 0.2 });
+    expect(session.state).toBe('starting');
+    expect(session.remainingSec).toBe(60);
+    expect(session.update({ source: 'tone-rain', chordsLevel: 0.4 }).source).toBe('bruma');
+    await advance(engine, 1);
+    const voice = factory.createVoice();
+    loaded.resolve(voice);
+    await start;
+
+    expect(createVoice).toHaveBeenCalledOnce();
+    expect(voice.set).toHaveBeenCalledWith(expect.objectContaining({ chordsLevel: 0.4 }), engine.context.currentTime);
+    expect(voice.start.mock.calls[0][0]).toBeGreaterThan(engine.context.currentTime);
+    expect(session.remainingSec).toBeCloseTo(60.05, 6);
+    expect(session.state).toBe('playing');
+  });
+
+  it('Detener cancela la carga de Bruma y suspende el contexto', async () => {
+    const loading = Promise.withResolvers();
+    const onError = vi.fn();
+    session = new SessionManager(engine, { ...PARAMS, source: 'bruma' }, {
+      createVoice: (_ctx, _params, signal) => new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+        loading.resolve();
+      }),
+    });
+    session.addEventListener('error', onError);
+    const start = session.start();
+    await loading.promise;
+    await session.stop();
+    await start;
+
+    expect(session.state).toBe('idle');
+    expect(engine.context.state).toBe('suspended');
+    expect(onError).not.toHaveBeenCalled();
   });
 
   it('un error del motor deja la sesión detenida y emite "error"', async () => {
@@ -57,6 +116,25 @@ describe('inicio', () => {
     await session.start();
     expect(session.state).toBe('idle');
     expect(onError).toHaveBeenCalledOnce();
+  });
+
+  it('un error tras crear el contexto lo suspende y no deja voces vivas', async () => {
+    let calls = 0;
+    session = new SessionManager(engine, PARAMS, {
+      createVoice: (...args) => {
+        if (++calls === 1) throw new Error('fallo al crear la voz');
+        return factory.createVoice(...args);
+      },
+    });
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    await session.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(session.state).toBe('idle');
+    expect(engine.context.state).toBe('suspended');
+    expect(engine.fadeNow()).toBe(0);
+    // y la siguiente sesión funciona con normalidad
+    await session.start();
+    expect(session.state).toBe('playing');
   });
 });
 
@@ -125,6 +203,18 @@ describe('final de sesión', () => {
     expect(engine.context.state).toBe('suspended');
   });
 
+  it('Detener en los últimos instantes no prolonga la señal más allá del plazo', async () => {
+    await playUntilRemaining(0.5);
+    const deadline = engine.context.currentTime + session.remainingSec;
+    session.stop();
+    await vi.advanceTimersByTimeAsync(0); // deja que la operación encolada programe su fundido
+    expect(session.state).toBe('stopping');
+    expect(engine.fadeGain.valueAt(deadline)).toBe(0);
+    expect(engine.fadeGain.valueAt(deadline + 0.25)).toBe(0);
+    await advance(engine, 1.5);
+    expect(session.state).toBe('idle');
+  });
+
   it('Detener estando en pausa libera todo de inmediato', async () => {
     await session.start();
     session.pause();
@@ -143,11 +233,19 @@ describe('parámetros', () => {
     expect(engine.setMasterGain).toHaveBeenLastCalledWith(0.25);
   });
 
-  it('duración y fundido no cambian durante la sesión', async () => {
+  it('duración, fundido y semilla no cambian durante la sesión (aunque se llame a update directamente)', async () => {
     await session.start();
-    const p = session.update({ durationMin: 30, fadeSec: 8 });
+    const seed = session.params.rainSeed;
+    const p = session.update({ durationMin: 30, fadeSec: 8, rainSeed: seed + 1 });
     expect(p.durationMin).toBe(1);
     expect(p.fadeSec).toBe(3);
+    expect(p.rainSeed).toBe(seed);
+  });
+
+  it('en reposo sí se pueden cambiar', async () => {
+    const p = session.update({ durationMin: 30, rainSeed: 2 });
+    expect(p.durationMin).toBe(30);
+    expect(p.rainSeed).toBe(2);
   });
 });
 
@@ -172,6 +270,20 @@ describe('panic (cierre de pestaña)', () => {
     expect(engine.contextsCreated).toBe(1);
     expect(engine.context).toBeNull();
     expect(factory.live()).toBe(0);
+    expect(session.state).toBe('idle');
+  });
+
+  it('una pausa cuya suspensión termina después del cierre no deja el estado en "paused"', async () => {
+    await session.start();
+    await advance(engine, 5);
+    let resolveSuspend;
+    engine.suspend.mockImplementationOnce(() => new Promise((r) => (resolveSuspend = r)));
+    session.pause();
+    await advance(engine, PAUSE_FADE_SEC + 0.1); // la pausa queda esperando a suspend()
+    expect(resolveSuspend).toBeTypeOf('function');
+    session.panic();
+    resolveSuspend();
+    await vi.advanceTimersByTimeAsync(0);
     expect(session.state).toBe('idle');
   });
 

@@ -20,8 +20,15 @@
       </aside>
 
       <section class="panel transport" aria-label="Reproducción">
+        <label class="transport__source">
+          <span>Fuente</span>
+          <select id="source">
+            <option value="bruma">Bruma de cristal</option>
+            <option value="tone-rain">Tono y lluvia</option>
+          </select>
+        </label>
         <div class="status">
-          <span id="status-label" class="status__label">Detenido</span>
+          <span id="status-label" class="status__label" role="status" aria-live="polite">Detenido</span>
           <span id="remaining" class="status__time">15:00</span>
         </div>
         <div class="buttons">
@@ -31,10 +38,13 @@
         </div>
       </section>
 
+      <p id="alert" class="alert" role="alert" hidden></p>
+
       <section class="panel" aria-label="Análisis de la señal">
-        <canvas id="scope" class="scope" aria-label="Forma de onda de la salida"></canvas>
+        <canvas id="scope" class="scope" aria-label="Forma de onda de la salida" aria-describedby="scope-caption"></canvas>
+        <p id="scope-caption" class="scope__caption">Escala: borde = volumen 100 % (−6 dBFS)</p>
         <dl class="readout">
-          <div><dt>Modulación medida</dt><dd id="m-mod">—</dd></div>
+          <div><dt id="m-mod-label">Modulación medida</dt><dd id="m-mod">—</dd></div>
           <div><dt>Portadora medida</dt><dd id="m-carrier">—</dd></div>
           <div><dt>Pico</dt><dd id="m-peak">—</dd></div>
           <div><dt>Clipping</dt><dd id="m-clip">—</dd></div>
@@ -42,7 +52,7 @@
       </section>
 
       <form id="controls" class="panel controls" autocomplete="off">
-        <fieldset>
+        <fieldset data-source="tone-rain" hidden>
           <legend>Portadora</legend>
           <label class="field">
             <span>Frecuencia</span>
@@ -58,7 +68,7 @@
           </label>
         </fieldset>
 
-        <fieldset>
+        <fieldset data-source="tone-rain" hidden>
           <legend>Mezcla</legend>
           <label class="field">
             <span>Tono</span>
@@ -79,21 +89,44 @@
           </div>
         </fieldset>
 
+        <fieldset data-source="bruma">
+          <legend>Capas de Bruma de cristal</legend>
+          <label class="field">
+            <span>Melodía</span>
+            <input type="range" name="melodyLevel" step="1" data-scale="0.01" />
+            <output data-for="melodyLevel"></output>
+          </label>
+          <label class="field">
+            <span>Acordes</span>
+            <input type="range" name="chordsLevel" step="1" data-scale="0.01" />
+            <output data-for="chordsLevel"></output>
+          </label>
+        </fieldset>
+
         <fieldset>
-          <legend>Modulación de amplitud <small>(se aplica a toda la mezcla)</small></legend>
+          <legend>Modulación de amplitud <small id="mod-target"></small></legend>
           <label class="field field--toggle">
             <input type="checkbox" name="modulationOn" />
             <span>Modulación activa <small>(desactívala para comparar A/B)</small></span>
+          </label>
+          <label class="field field--toggle">
+            <input type="checkbox" name="abMatchLoudness" />
+            <span>Igualar sonoridad en A/B <small>(iguala el RMS de la capa modulable)</small></span>
           </label>
           <label class="field">
             <span>Frecuencia</span>
             <input type="range" name="modRateHz" step="0.5" />
             <output data-for="modRateHz"></output>
           </label>
-          <label class="field">
+          <label class="field" data-source="tone-rain" hidden>
             <span>Profundidad</span>
             <input type="range" name="depth" step="1" data-scale="0.01" />
             <output data-for="depth"></output>
+          </label>
+          <label class="field" data-source="bruma">
+            <span>Profundidad</span>
+            <input type="range" name="brumaDepth" step="1" data-scale="0.01" />
+            <output data-for="brumaDepth"></output>
           </label>
         </fieldset>
 

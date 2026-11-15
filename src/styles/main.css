@@ -73,6 +73,12 @@ body {
   justify-content: space-between;
   gap: 12px;
 }
+.transport__source {
+  flex-basis: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
 .status {
   display: flex;
   align-items: baseline;
@@ -134,6 +140,26 @@ body[data-state='playing'] .status__label {
   background: var(--bg);
   border-radius: 6px;
 }
+.scope__caption {
+  margin: 6px 0 0;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+.readout dd[data-status='none'],
+.readout dd[data-status='unstable'],
+.readout dd[data-status='short'] {
+  color: var(--muted);
+  font-style: italic;
+}
+.alert {
+  margin: 0;
+  border: 1px solid color-mix(in srgb, var(--danger) 60%, transparent);
+  background: color-mix(in srgb, var(--danger) 10%, var(--panel));
+  color: var(--danger);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  font-size: 0.9rem;
+}
 .readout {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
@@ -156,6 +182,9 @@ body[data-state='playing'] .status__label {
 }
 
 /* ---- Controles ---- */
+.controls [hidden] {
+  display: none;
+}
 .controls {
   display: grid;
   gap: 12px;

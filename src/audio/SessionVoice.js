@@ -1,11 +1,9 @@
-import { effectiveDepth } from './dsp.js';
 import { Mixer } from './Mixer.js';
 import { Modulator } from './Modulator.js';
 import { RainSource } from './RainSource.js';
 import { Synthesizer } from './Synthesizer.js';
 
 const levelsOf = (p) => ({ tone: p.toneLevel, rain: p.rainLevel });
-const modOf = (p) => ({ modRateHz: p.modRateHz, depth: effectiveDepth(p) });
 
 /**
  * Todo el sonido de una sesión. Se crea al iniciar y se destruye al terminar.
@@ -19,7 +17,7 @@ export class SessionVoice {
     this.mixer = new Mixer(ctx, levelsOf(params));
     this.tone = new Synthesizer(ctx, params);
     this.rain = new RainSource(ctx, params);
-    this.mod = new Modulator(ctx, modOf(params));
+    this.mod = new Modulator(ctx, params);
 
     this.tone.output.connect(this.mixer.input('tone'));
     this.rain.output.connect(this.mixer.input('rain'));
@@ -39,7 +37,7 @@ export class SessionVoice {
   set(params, time) {
     this.tone.set(params, time);
     this.mixer.setLevels(levelsOf(params), time);
-    this.mod.set(modOf(params), time);
+    this.mod.set(params, time);
   }
 
   dispose() {

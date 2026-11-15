@@ -1,16 +1,20 @@
-import { mixNormalization } from './dsp.js';
+import { channelGains } from './dsp.js';
 import { smoothSet } from './params.js';
 
-/** Mezclador por canales con normalización automática (la suma nunca supera pico 1). */
+/**
+ * Mezclador por canales. La normalización (la suma nunca supera pico 1) va incluida
+ * en la ganancia de cada canal: ver channelGains() en dsp.js.
+ */
 export class Mixer {
   #channels;
 
   /** @param levels objeto { nombreCanal: nivel 0–1 } que define los canales y su nivel inicial */
   constructor(ctx, levels) {
-    this.output = new GainNode(ctx, { gain: mixNormalization(Object.values(levels)) });
+    this.output = new GainNode(ctx, { gain: 1 });
+    const gains = channelGains(levels);
     this.#channels = new Map(
-      Object.entries(levels).map(([name, level]) => {
-        const g = new GainNode(ctx, { gain: level });
+      Object.keys(levels).map((name) => {
+        const g = new GainNode(ctx, { gain: gains[name] });
         g.connect(this.output);
         return [name, g];
       }),
@@ -24,8 +28,9 @@ export class Mixer {
   }
 
   setLevels(levels, time) {
-    for (const [name, level] of Object.entries(levels)) smoothSet(this.input(name).gain, level, time);
-    smoothSet(this.output.gain, mixNormalization(Object.values(levels)), time);
+    for (const [name, gain] of Object.entries(channelGains(levels))) {
+      smoothSet(this.input(name).gain, gain, time);
+    }
   }
 
   dispose() {

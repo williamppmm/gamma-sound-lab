@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { estimateModulation, amBaseGain, amLfoGain, mixNormalization } from '../src/audio/dsp.js';
+import { estimateModulation, amBaseGain, amLfoGain } from '../src/audio/dsp.js';
 import { mulberry32, renderRain } from '../src/audio/generators.js';
 
 const SR = 48000;
@@ -51,14 +51,5 @@ describe('renderRain', () => {
     const m = estimateModulation(y, SR);
     expect(Math.abs(m.frequency - 40)).toBeLessThanOrEqual(0.25);
     expect(Math.abs(m.depth - d)).toBeLessThan(0.1); // ruido → estimación menos exacta que con tono
-  });
-});
-
-describe('mixNormalization', () => {
-  it('no toca mezclas con suma ≤ 1 y reduce las que pasan de 1', () => {
-    expect(mixNormalization([1, 0])).toBe(1);
-    expect(mixNormalization([0.4, 0.5])).toBe(1);
-    expect(mixNormalization([1, 1])).toBe(0.5);
-    expect(mixNormalization([0, 0])).toBe(1);
   });
 });
